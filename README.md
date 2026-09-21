@@ -348,7 +348,7 @@ Object Pool을 통해 반복적인 `SpawnActor()`와 `Destroy()` 호출을 줄�
 | `BTTask_PlayAttackMontage` | 공격 Animation Montage 재생 |
 | `BTTask_CircleAroundPlayer` | 플레이어 주변 이동 |
 | `BTTask_Retreat` | 공격 후 후퇴 |
-| `BTTask_Rest` | 공격 사이 대기 |
+| `BTTask_Rest` | 체력 회복 |
 | `BTTask_SetBlackboardBool` | Blackboard 상태 변경 |
 
 ### AI 전투 흐름
