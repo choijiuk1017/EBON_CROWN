@@ -26,6 +26,8 @@ protected:
 private:
 	UPROPERTY()
 	APlayerCharacter* OwnerPlayer = nullptr;
+	TWeakObjectPtr<AItem> PendingPickup;
+	bool TryCollectItem(AItem* Item);
 
 public:
 	void InitializeInteractionComponent(APlayerCharacter* InOwner);

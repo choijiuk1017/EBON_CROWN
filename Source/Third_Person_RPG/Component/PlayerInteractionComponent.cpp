@@ -72,50 +72,25 @@ void UPlayerInteractionComponent::Interact()
 
 	UE_LOG(LogTemp, Warning, TEXT("상호작용 키 입력됨"));
 
-	UInventoryComponent* Inventory = OwnerPlayer->FindComponentByClass<UInventoryComponent>();
-
-	if (OwnerPlayer->OverlappingItem && OwnerPlayer->OverlappingItem->ItemData)
+	if (IsValid(OwnerPlayer->OverlappingItem) && OwnerPlayer->OverlappingItem->ItemData)
 	{
-		const FPrimaryAssetId AssetId =
-			OwnerPlayer->OverlappingItem->ItemData->GetPrimaryAssetId();
-
-		if (UTPRGameInstance* GI =
-			Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(OwnerPlayer->GetWorld())))
+		AItem* Item = OwnerPlayer->OverlappingItem;
+		if (Item->WeaponClass && OwnerPlayer->CanSetWeapon())
 		{
-			GI->RegisterCollectedItemAsset(AssetId);
-		}
-
-		if (OwnerPlayer->OverlappingItem->WeaponClass && OwnerPlayer->CanSetWeapon())
-		{
-			OwnerPlayer->bIsInteracting = true;
-
-			OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
-
-			UAnimInstance* AnimInstance = OwnerPlayer->GetMesh()->GetAnimInstance();
-
-			if (AnimInstance && OwnerPlayer->PickUpMontage)
+			UAnimInstance* Anim = OwnerPlayer->GetMesh()->GetAnimInstance();
+			if (Anim && OwnerPlayer->PickUpMontage && Anim->Montage_Play(OwnerPlayer->PickUpMontage, 1.7f) > 0.f)
 			{
-				AnimInstance->Montage_Play(OwnerPlayer->PickUpMontage, 1.7f);
-
+				PendingPickup = Item;
+				OwnerPlayer->bIsInteracting = true;
+				OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_None);
 				FOnMontageEnded EndDelegate;
 				EndDelegate.BindUObject(this, &UPlayerInteractionComponent::OnEquipAnimationEnd);
-				AnimInstance->Montage_SetEndDelegate(EndDelegate, OwnerPlayer->PickUpMontage);
-
+				Anim->Montage_SetEndDelegate(EndDelegate, OwnerPlayer->PickUpMontage);
 				return;
 			}
 		}
-		else
-		{
-			if (Inventory)
-			{
-				int32 OutQuantity = 1;
-				Inventory->AddItemByData(OwnerPlayer->OverlappingItem->ItemData, OutQuantity);
-			}
-
-			OwnerPlayer->OverlappingItem->Destroy();
-			OwnerPlayer->OverlappingItem = nullptr;
-			OwnerPlayer->bIsInteracting = false;
-		}
+		TryCollectItem(Item);
+		return;
 	}
 
 	if (OwnerPlayer->OverlappingSavePoint)
@@ -166,29 +141,33 @@ void UPlayerInteractionComponent::Interact()
 	}
 }
 
+bool UPlayerInteractionComponent::TryCollectItem(AItem* Item)
+{
+	if (!OwnerPlayer || !IsValid(Item) || !Item->ItemData) return false;
+	UInventoryComponent* Inventory = OwnerPlayer->GetInventoryComponent();
+	if (!Inventory || !Inventory->AddItemByData(Item->ItemData, 1))
+	{
+		OwnerPlayer->ShowInteractionUI(FText::FromString(TEXT("\uC778\uBCA4\uD1A0\uB9AC\uAC00 \uAC00\uB4DD \uCC3C\uC2B5\uB2C8\uB2E4.")));
+		return false;
+	}
+	if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(OwnerPlayer->GetGameInstance()))
+		GI->RegisterCollectedItemAsset(Item->ItemData->GetPrimaryAssetId());
+	if (OwnerPlayer->OverlappingItem == Item)
+	{
+		OwnerPlayer->OverlappingItem = nullptr;
+		OwnerPlayer->HideInteractionUI();
+	}
+	Item->Destroy();
+	return true;
+}
+
 void UPlayerInteractionComponent::OnEquipAnimationEnd(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (!OwnerPlayer) return;
-
-	UE_LOG(LogTemp, Warning, TEXT("장비 획득"));
-
-	if (!OwnerPlayer->OverlappingItem || !OwnerPlayer->OverlappingItem->ItemData)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("OverlappingItem이 nullptr 또는 ItemData 없음"));
-		return;
-	}
-
-	UInventoryComponent* Inventory = OwnerPlayer->FindComponentByClass<UInventoryComponent>();
-
-	if (Inventory)
-	{
-		int32 OutQuantity = 1;
-		Inventory->AddItemByData(OwnerPlayer->OverlappingItem->ItemData, OutQuantity);
-	}
-
-	OwnerPlayer->OverlappingItem->Destroy();
-	OwnerPlayer->OverlappingItem = nullptr;
-
-	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+	AItem* Item = PendingPickup.Get();
+	PendingPickup.Reset();
 	OwnerPlayer->bIsInteracting = false;
+	if (!OwnerPlayer->bIsDead && !OwnerPlayer->bIsKneeling)
+		OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	if (!bInterrupted && !OwnerPlayer->bIsDead) TryCollectItem(Item);
 }

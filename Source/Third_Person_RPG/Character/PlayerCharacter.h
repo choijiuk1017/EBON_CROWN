@@ -288,6 +288,8 @@ public:
 
 	void Prayer();
 	void EndPrayer();
+	ECollisionResponse RollPreviousResponse = ECR_Overlap;
+	bool bRollCollisionOverridden = false;
 
 	FTimerHandle PrayerTimerHandle;
 

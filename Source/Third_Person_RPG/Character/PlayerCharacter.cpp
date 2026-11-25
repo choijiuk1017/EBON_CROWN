@@ -254,6 +254,7 @@ void APlayerCharacter::BeginPlay()
 		}
 
 		GI->ApplyLoadedPlayerStatTo(this);
+		GI->RestoreContinueLocation(this);
 	}	
 
 	if (PlayerStatusWidgetClass)
@@ -524,56 +525,26 @@ void APlayerCharacter::EndSprint()
 
 void APlayerCharacter::RollStart()
 {
-	// 구르기 중이면 리턴
-	if (bIsInteracting || bIsRoll || bIsSkillActing) return;
-	if (bIsDead) return;
-	if (CombatStats.CurrentStamina < StaminaCost_Roll) return;
-	ConsumeStamina(StaminaCost_Roll);
-
-
+	if (bIsInteracting || bIsRoll || bIsSkillActing || bIsDead || bIsKneeling || bIsPopupInventory) return;
+	if (!HasStamina(StaminaCost_Roll)) return;
+	UAnimInstance* Anim = GetMesh()->GetAnimInstance();
+	if (!Anim || !RollMontage) return;
 	const float Half = DerivedStats.MaxEquipLoad * 0.5f;
 	const float W = GetCurrentWeaponWeight();
-
-	// 애님 인스턴스 가져오기
-	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-	if (AnimInstance)
-	{
-		// Roll Check (구르기 활성화)
-		bIsRoll = true;
-
-		if (W <= Half - 5.f)
-		{
-			// 몽타주 재생
-			AnimInstance->Montage_Play(RollMontage, 2.0f);
-		}
-		else if (W > Half - 5.f && W < Half + 5.f)
-		{
-			// 몽타주 재생
-			AnimInstance->Montage_Play(RollMontage, 1.5f);
-		}
-		else
-		{
-			// 몽타주 재생
-			AnimInstance->Montage_Play(RollMontage, 1.0f);
-		}
-	
-		// 몽타주 재생 종료 바인딩
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &APlayerCharacter::RollEnd);
-
-		// RollMontage 종료 시 EndDelegate에 연동된 함수 호출
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, RollMontage);
-
-		
-	}
+	const float Rate = W <= Half - 5.f ? 2.f : (W < Half + 5.f ? 1.5f : 1.f);
+	if (Anim->Montage_Play(RollMontage, Rate) <= 0.f) return;
+	ConsumeStamina(StaminaCost_Roll);
+	bIsRoll = true;
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &APlayerCharacter::RollEnd);
+	Anim->Montage_SetEndDelegate(EndDelegate, RollMontage);
 }
 
-void APlayerCharacter::RollEnd(class UAnimMontage* Montage, bool IsEnded)
+void APlayerCharacter::RollEnd(UAnimMontage* Montage, bool bInterrupted)
 {
-	// Roll UnCheck (구르기 비활성화)
 	bIsRoll = false;
+	EndRolling();
 }
-
 
 void APlayerCharacter::Interact()
 {
@@ -981,6 +952,11 @@ void APlayerCharacter::StartRolling()
 
 	if (!Capsule) return;
 
+	if (!bRollCollisionOverridden)
+	{
+		RollPreviousResponse = Capsule->GetCollisionResponseToChannel(CHANNEL_ACTION);
+		bRollCollisionOverridden = true;
+	}
 	Capsule->SetCollisionResponseToChannel(CHANNEL_ACTION, ECR_Ignore);
 
 }
@@ -990,7 +966,11 @@ void APlayerCharacter::EndRolling()
 	UCapsuleComponent* Capsule = GetCapsuleComponent();
 	if (!Capsule) return;
 
-	Capsule->SetCollisionResponseToChannel(CHANNEL_ACTION, ECR_Block);
+	if (bRollCollisionOverridden)
+	{
+		Capsule->SetCollisionResponseToChannel(CHANNEL_ACTION, RollPreviousResponse);
+		bRollCollisionOverridden = false;
+	}
 }
 
 void APlayerCharacter::SetCurrentNPC(ANPC* InNPC)
@@ -1128,34 +1108,22 @@ void APlayerCharacter::HandleChoiceConfirmed(bool bYes)
 
 void APlayerCharacter::ApplyPrayerBuff()
 {
-	CombatStats.CurrentHP += 500;
-	CombatStats.CurrentFP += 200;
-
-	CombatStats.CurrentStamina += 500;
-
-	CombatStats.AttackPower += 50;
-
-	CombatStats.Defense += 10;
-
-	CombatStats.Poise += 10;
+	// Recovery is immediate; only combat bonuses expire.
+	CombatStats.CurrentHP = FMath::Clamp(CombatStats.CurrentHP + 500, 0, DerivedStats.MaxHP);
+	CombatStats.CurrentFP = FMath::Clamp(CombatStats.CurrentFP + 200, 0, DerivedStats.MaxFP);
+	CombatStats.CurrentStamina = FMath::Clamp(CombatStats.CurrentStamina + 500, 0, DerivedStats.MaxStamina);
+	RecalculateStatsAfterLevelUp(false);
 }
 
 void APlayerCharacter::RemovePrayerBuff()
 {
-	CombatStats.CurrentHP -= 500;
-	CombatStats.CurrentFP -= 200;
-
-	CombatStats.CurrentStamina -= 500;
-
-	CombatStats.AttackPower -= 50;
-
-	CombatStats.Defense -= 10;
-
-	CombatStats.Poise -= 10;
+	bIsPray = false;
+	RecalculateStatsAfterLevelUp(false);
 }
 
 void APlayerCharacter::Prayer()
 {
+	if (bIsDead) return;
 	if (bIsPray)
 	{
 		if (UWorld* World = GetWorld())

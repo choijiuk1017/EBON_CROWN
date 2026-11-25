@@ -3,7 +3,8 @@
 
 #include "Third_Person_RPG/Actor/LevelPreloadTrigger.h"
 #include "Components/BoxComponent.h"
-#include "Kismet/GameplayStatics.h"
+#include "Engine/GameInstance.h"
+#include "Third_Person_RPG/Instance/LevelPreloadSubsystem.h"
 
 // Sets default values
 ALevelPreloadTrigger::ALevelPreloadTrigger()
@@ -39,6 +40,12 @@ void ALevelPreloadTrigger::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, A
 {
 	if (!OtherActor || !OtherActor->ActorHasTag("Player")) return;
 
-	UGameplayStatics::LoadStreamLevel(GetWorld(), TargetLevelName, true, false, FLatentActionInfo());
+	if (UGameInstance* GI = GetGameInstance())
+	{
+		if (ULevelPreloadSubsystem* Preloader = GI->GetSubsystem<ULevelPreloadSubsystem>())
+		{
+			Preloader->PreloadLevel(TargetLevelName);
+		}
+	}
 
 }

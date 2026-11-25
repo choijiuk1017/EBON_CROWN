@@ -80,139 +80,37 @@ void UTitleScreenWidget::UpdateSelection()
 
 void UTitleScreenWidget::ExecuteSelection()
 {
-	switch (CurrentIndex)
+	if (bStartingGame) return;
+	if (CurrentIndex == 2)
 	{
-	case 0:
-	{
-		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance()))
-		{
-			if (!GI->DeleteSaveData())
-			{
-				return;
-			}
-		}
-
-		if (LoadingScreen)
-		{
-			LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
-			if (LoadingScreenWidget)
-			{
-				LoadingScreenWidget->AddToViewport(9999);
-			}
-		}
-
-
-		FTimerHandle TimerHandle;
-		FTimerDelegate TimerDelegate;
-		TimerDelegate.BindLambda([=, this]()
-		{
-			UGameplayStatics::OpenLevel(GetWorld(), TEXT("Start"));
-			//UGameplayStatics::OpenLevel(GetWorld(), TEXT("Dungeon1"));
-		});
-
-		GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
-
-		break;
-	}
-	case 1:
-	{
-		const FString SaveSlotName = TEXT("PlayerSaveSlot");
-		const int32 UserIndex = 0;
-
-		if (!UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
-		{
-			if (LoadingScreen)
-			{
-				LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
-				if (LoadingScreenWidget)
-				{
-					LoadingScreenWidget->AddToViewport(9999);
-				}
-			}
-
-
-			FTimerHandle TimerHandle;
-			FTimerDelegate TimerDelegate;
-			TimerDelegate.BindLambda([=, this]()
-				{
-					UGameplayStatics::OpenLevel(GetWorld(), TEXT("Start"));
-				});
-
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
-			break;
-		}
-
-		UTPRSaveGame* Loaded = Cast<UTPRSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, UserIndex));
-		if (!Loaded)
-		{
-			if (LoadingScreen)
-			{
-				LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
-				if (LoadingScreenWidget)
-				{
-					LoadingScreenWidget->AddToViewport(9999);
-				}
-			}
-
-
-			FTimerHandle TimerHandle;
-			FTimerDelegate TimerDelegate;
-			TimerDelegate.BindLambda([=, this]()
-				{
-					UGameplayStatics::OpenLevel(GetWorld(), TEXT("Start"));
-				});
-
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
-			break;
-		}
-
-		if (!Loaded->LastSavedMapName.IsNone())
-		{
-			if (LoadingScreen)
-			{
-				LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
-				if (LoadingScreenWidget)
-				{
-					LoadingScreenWidget->AddToViewport(9999);
-				}
-			}
-
-
-			FTimerHandle TimerHandle;
-			FTimerDelegate TimerDelegate;
-			TimerDelegate.BindLambda([=, this]()
-				{
-					UGameplayStatics::OpenLevel(GetWorld(), Loaded->LastSavedMapName);
-				});
-
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
-			
-		}
-		else
-		{
-			if (LoadingScreen)
-			{
-				LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
-				if (LoadingScreenWidget)
-				{
-					LoadingScreenWidget->AddToViewport(9999);
-				}
-			}
-
-
-			FTimerHandle TimerHandle;
-			FTimerDelegate TimerDelegate;
-			TimerDelegate.BindLambda([=, this]()
-				{
-					UGameplayStatics::OpenLevel(GetWorld(), TEXT("Start"));
-				});
-
-			GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
-		}
-		break;
-	}
-	case 2:
 		UKismetSystemLibrary::QuitGame(GetWorld(), nullptr, EQuitPreference::Quit, true);
-		break;
+		return;
 	}
+	UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance());
+	if (!GI) return;
+	FName TargetMap(TEXT("Start"));
+	if (CurrentIndex == 0)
+	{
+		if (!GI->DeleteSaveData()) return;
+	}
+	else
+	{
+		if (UGameplayStatics::DoesSaveGameExist(TEXT("PlayerSaveSlot"), 0))
+		{
+			if (!GI->PrepareContinue(TargetMap)) return;
+		}
+		else if (!GI->DeleteSaveData()) return;
+	}
+	bStartingGame = true;
+	if (LoadingScreen)
+	{
+		LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);
+		if (LoadingScreenWidget) LoadingScreenWidget->AddToViewport(9999);
+	}
+	FTimerHandle TimerHandle;
+	GetWorld()->GetTimerManager().SetTimer(TimerHandle,
+		FTimerDelegate::CreateWeakLambda(this, [this, TargetMap]()
+		{
+			UGameplayStatics::OpenLevel(this, TargetMap);
+		}), 0.1f, false);
 }

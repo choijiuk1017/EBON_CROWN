@@ -5,7 +5,6 @@
 
 #include "Components/BoxComponent.h"
 #include "Kismet/GameplayStatics.h"
-#include "Engine/LevelStreaming.h"
 #include "Third_Person_RPG/Instance/TPRGameInstance.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Blueprint/UserWidget.h"
@@ -52,7 +51,6 @@ void ALevelConvertTrigger::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, A
 
 
 
-	ULevelStreaming* StreamedLevel = UGameplayStatics::GetStreamingLevel(GetWorld(), NextLevelName);
 
 	if (APlayerCharacter* PC = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0)))
 	{
@@ -68,13 +66,6 @@ void ALevelConvertTrigger::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, A
 	}
 
 	
-	if (StreamedLevel && StreamedLevel->IsLevelLoaded())
-	{
-		UGameplayStatics::OpenLevel(GetWorld(), NextLevelName);
-		UE_LOG(LogTemp, Warning, TEXT("Trying to convert level: %s"), *NextLevelName.ToString());
-		return;
-	}
-
 	if (LoadingScreen)
 	{
 		LoadingScreenWidget = CreateWidget<UUserWidget>(GetWorld(), LoadingScreen);

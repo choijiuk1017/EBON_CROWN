@@ -123,6 +123,12 @@ bool UTPRGameInstance::LoadGameData()
 		UTPRSaveGame* LoadedGame = Cast<UTPRSaveGame>(UGameplayStatics::LoadGameFromSlot(SaveSlotName, UserIndex));
 		if (LoadedGame)
 		{
+			LoadedMapName = LoadedGame->LastSavedMapName;
+			LoadedLocation = LoadedGame->LastSavedLocation;
+			PendingSavePointID = NAME_None;
+			bShouldRespawn = false;
+			bRestoreContinueLocation = false;
+			FinishedTutorials.Empty();
 			DiscoveredSavePoints.Empty();
 
 			for (const FSavePointInfo& Info : LoadedGame->AllDiscoveredSavePoints)
@@ -208,6 +214,23 @@ bool UTPRGameInstance::LoadGameData()
 		}
 	}
 	return false;
+}
+
+bool UTPRGameInstance::PrepareContinue(FName& OutMap)
+{
+	if (!LoadGameData() || LoadedMapName.IsNone()) return false;
+	OutMap = LoadedMapName;
+	bRestoreContinueLocation = true;
+	return true;
+}
+
+void UTPRGameInstance::RestoreContinueLocation(APlayerCharacter* Player)
+{
+	if (!Player || !bRestoreContinueLocation) return;
+	const FName Map(*UGameplayStatics::GetCurrentLevelName(Player, true));
+	if (FPackageName::GetShortFName(LoadedMapName) != Map) return;
+	bRestoreContinueLocation = false;
+	Player->SetActorLocation(LoadedLocation);
 }
 
 void UTPRGameInstance::CacheInventory(const TArray<UInventoryItem*>& Items)
@@ -311,6 +334,9 @@ bool UTPRGameInstance::DeleteSaveData()
 	PendingSavePointID = NAME_None;
 	LastRestedSavePointID = NAME_None;
 	LastActivatedSavePoint.Empty();
+	bRestoreContinueLocation = false;
+	LoadedMapName = NAME_None;
+	LoadedLocation = FVector::ZeroVector;
 	CollectedItemAssets.Empty();
 	LoadedEnhanceLevels.Empty();
 	FinishedTutorials.Empty();

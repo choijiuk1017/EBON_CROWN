@@ -43,6 +43,7 @@ protected:
 
 
 	int32 CurrentIndex = 0;
+	bool bStartingGame = false;
 
 	void UpdateSelection();
 

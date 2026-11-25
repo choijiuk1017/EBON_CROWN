@@ -41,6 +41,7 @@ public:
 	void BaseAttackCheck();
 
 	void SkillStart();
+	void SkillEnd(UAnimMontage* Montage, bool bInterrupted);
 	void SkillAttackCheck();
 	void SpawnSkillEffect();
 

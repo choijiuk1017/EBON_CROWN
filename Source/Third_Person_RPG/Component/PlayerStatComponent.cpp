@@ -135,7 +135,7 @@ void UPlayerStatComponent::RecalculateStatsAfterLevelUp(bool bRefillHPFPStamina)
 		OwnerPlayer->ResetCombatStats();
 	}
 
-	OwnerPlayer->CombatStats.Poise = OwnerPlayer->DerivedStats.Poise;
+	OwnerPlayer->CombatStats.Poise = OwnerPlayer->DerivedStats.Poise + (OwnerPlayer->bIsPray ? 10.f : 0.f);
 
 	if (OwnerPlayer->PlayerStatusWidgetInstance)
 	{

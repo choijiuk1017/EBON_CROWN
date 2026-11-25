@@ -60,6 +60,11 @@ public:
 	// 세이브 및 로드 기능 추가
 	void SaveGameData();
 	bool LoadGameData();
+	bool PrepareContinue(FName& OutMap);
+	void RestoreContinueLocation(APlayerCharacter* Player);
+	FName LoadedMapName = NAME_None;
+	FVector LoadedLocation = FVector::ZeroVector;
+	bool bRestoreContinueLocation = false;
 
 	TArray<FString> GetActivatedSavePointNames() const;
 

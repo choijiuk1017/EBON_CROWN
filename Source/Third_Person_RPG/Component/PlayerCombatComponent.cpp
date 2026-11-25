@@ -66,10 +66,10 @@ void UPlayerCombatComponent::ResetCombatStats()
 	if (!OwnerPlayer) return;
 
 	OwnerPlayer->CombatStats.AttackPower =
-		50 + (OwnerPlayer->CharacterAttributes.Strength * 2);
+		50 + (OwnerPlayer->CharacterAttributes.Strength * 2) + (OwnerPlayer->bIsPray ? 50 : 0);
 
 	OwnerPlayer->CombatStats.Defense =
-		10 + FMath::RoundToInt(OwnerPlayer->CharacterAttributes.Strength * 1.5f);
+		10 + FMath::RoundToInt(OwnerPlayer->CharacterAttributes.Strength * 1.5f) + (OwnerPlayer->bIsPray ? 10 : 0);
 }
 
 void UPlayerCombatComponent::ApplyWeaponStats(ATPRWeapon* Weapon)
@@ -114,7 +114,7 @@ void UPlayerCombatComponent::ApplyWeaponStats(ATPRWeapon* Weapon)
 	TotalHoly = FMath::RoundToInt(static_cast<float>(TotalHoly) * EnhanceMul);
 
 	OwnerPlayer->CombatStats.AttackPower =
-		TotalPhysical + TotalMagic + TotalFire + TotalLightning + TotalHoly;
+		TotalPhysical + TotalMagic + TotalFire + TotalLightning + TotalHoly + (OwnerPlayer->bIsPray ? 50 : 0);
 }
 
 void UPlayerCombatComponent::BasicAttack()
@@ -132,7 +132,6 @@ void UPlayerCombatComponent::BasicAttack()
 	if (OwnerPlayer->CurrentComboCount == 0)
 	{
 		ComboStart();
-		OwnerPlayer->bIsAttacking = true;
 		return;
 	}
 
@@ -148,27 +147,21 @@ void UPlayerCombatComponent::BasicAttack()
 
 void UPlayerCombatComponent::ComboStart()
 {
-	if (!OwnerPlayer) return;
-	if (!OwnerPlayer->TryConsumeStamina(OwnerPlayer->StaminaCost_Attack)) return;
-
+	if (!OwnerPlayer || OwnerPlayer->bIsDead) return;
+	UMMComboActionData* Data = OwnerPlayer->CurrentWeapon ? OwnerPlayer->WeaponComboData : OwnerPlayer->BasicComboData;
+	UAnimInstance* Anim = OwnerPlayer->GetMesh()->GetAnimInstance();
+	if (!Data || !Data->ComboMontage || !Anim || Data->ComnboPlayRate <= 0.f) return;
+	if (!OwnerPlayer->HasStamina(OwnerPlayer->StaminaCost_Attack)) return;
+	if (Anim->Montage_Play(Data->ComboMontage, Data->ComnboPlayRate) <= 0.f) return;
+	OwnerPlayer->ConsumeStamina(OwnerPlayer->StaminaCost_Attack);
 	OwnerPlayer->CurrentComboCount = 1;
-	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
-
-	UMMComboActionData* ComboData =
-		OwnerPlayer->CurrentWeapon ? OwnerPlayer->WeaponComboData : OwnerPlayer->BasicComboData;
-
-	if (!ComboData || !ComboData->ComboMontage) return;
-
-	UAnimInstance* AnimInstance = OwnerPlayer->GetMesh()->GetAnimInstance();
-	if (!AnimInstance) return;
-
-	AnimInstance->Montage_Play(ComboData->ComboMontage, ComboData->ComnboPlayRate);
-
+	OwnerPlayer->bHasComboInput = false;
+	OwnerPlayer->bIsAttacking = true;
+	OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_None);
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &UPlayerCombatComponent::ComboEnd);
-	AnimInstance->Montage_SetEndDelegate(EndDelegate, ComboData->ComboMontage);
-
-	OwnerPlayer->ComboTimerHandle.Invalidate();
+	Anim->Montage_SetEndDelegate(EndDelegate, Data->ComboMontage);
+	OwnerPlayer->GetWorldTimerManager().ClearTimer(OwnerPlayer->ComboTimerHandle);
 	SetComboTimer();
 }
 
@@ -176,11 +169,14 @@ void UPlayerCombatComponent::ComboEnd(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (!OwnerPlayer) return;
 
+	OwnerPlayer->GetWorldTimerManager().ClearTimer(OwnerPlayer->ComboTimerHandle);
+	DisableWeaponHitBox();
 	OwnerPlayer->CurrentComboCount = 0;
 	OwnerPlayer->bHasComboInput = false;
 	OwnerPlayer->bIsAttacking = false;
 
-	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+	if (!OwnerPlayer->bIsDead && !OwnerPlayer->bIsSkillActing && !OwnerPlayer->bIsInteracting && !OwnerPlayer->bIsKneeling)
+		OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 }
 
 void UPlayerCombatComponent::ComboCheck()
@@ -247,7 +243,8 @@ void UPlayerCombatComponent::SetComboTimer()
 
 	if (!ComboData->ComboFrame.IsValidIndex(ComboIndex)) return;
 
-	const float AttackSpeedRate = 1.0f;
+	if (ComboData->FrameRate <= 0.f || ComboData->ComnboPlayRate <= 0.f) return;
+	const float AttackSpeedRate = ComboData->ComnboPlayRate;
 	const float ComboAvailableTime =
 		(ComboData->ComboFrame[ComboIndex] / ComboData->FrameRate) / AttackSpeedRate;
 
@@ -342,41 +339,33 @@ void UPlayerCombatComponent::BaseAttackCheck()
 
 void UPlayerCombatComponent::SkillStart()
 {
-	if (!OwnerPlayer || !OwnerPlayer->SkillData) return;
-
-	if (OwnerPlayer->bIsInteracting || OwnerPlayer->bIsRoll ||
-		!OwnerPlayer->SkillData->SkillMontage || OwnerPlayer->bIsSkillActing)
-	{
-		return;
-	}
-
-	if (OwnerPlayer->bIsDead) return;
-
-	if (OwnerPlayer->CombatStats.CurrentStamina < OwnerPlayer->StaminaCost_Skill) return;
+	if (!OwnerPlayer || !OwnerPlayer->SkillData || OwnerPlayer->bIsDead) return;
+	if (OwnerPlayer->bIsInteracting || OwnerPlayer->bIsRoll || OwnerPlayer->bIsAttacking ||
+		OwnerPlayer->bIsKneeling || OwnerPlayer->bIsPopupInventory || OwnerPlayer->bIsSkillActing) return;
+	const USkillData* Data = OwnerPlayer->SkillData;
+	UAnimInstance* Anim = OwnerPlayer->GetMesh()->GetAnimInstance();
+	if (!Anim || !Data->SkillMontage || Data->SkillPlayRate <= 0.f) return;
+	const int32 FPCost = OwnerPlayer->bSkillConsumesFP ? OwnerPlayer->GetCurrentSkillFPCost() : 0;
+	if (!OwnerPlayer->HasStamina(OwnerPlayer->StaminaCost_Skill) || !OwnerPlayer->HasFP(FPCost)) return;
+	if (Anim->Montage_Play(Data->SkillMontage, Data->SkillPlayRate) <= 0.f) return;
 	OwnerPlayer->ConsumeStamina(OwnerPlayer->StaminaCost_Skill);
-
-	if (OwnerPlayer->bSkillConsumesFP)
-	{
-		const int32 FPCost = OwnerPlayer->GetCurrentSkillFPCost();
-
-		if (FPCost > 0 && !OwnerPlayer->TryConsumeFP(FPCost))
-		{
-			return;
-		}
-	}
-
-	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
-
-	UAnimInstance* AnimInstance = OwnerPlayer->GetMesh()->GetAnimInstance();
-	if (!AnimInstance) return;
-
+	if (FPCost > 0) OwnerPlayer->ConsumeFP(FPCost);
 	OwnerPlayer->bIsSkillActing = true;
 	OwnerPlayer->bIsAttacking = true;
+	OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_None);
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &UPlayerCombatComponent::SkillEnd);
+	Anim->Montage_SetEndDelegate(EndDelegate, Data->SkillMontage);
+}
 
-	AnimInstance->Montage_Play(
-		OwnerPlayer->SkillData->SkillMontage,
-		OwnerPlayer->SkillData->SkillPlayRate
-	);
+void UPlayerCombatComponent::SkillEnd(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (!OwnerPlayer) return;
+	OwnerPlayer->bIsSkillActing = false;
+	OwnerPlayer->bIsAttacking = false;
+	DisableWeaponHitBox();
+	if (!OwnerPlayer->bIsDead && !OwnerPlayer->bIsInteracting && !OwnerPlayer->bIsKneeling)
+		OwnerPlayer->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 }
 
 void UPlayerCombatComponent::SpawnSkillEffect()
@@ -475,19 +464,20 @@ void UPlayerCombatComponent::SkillAttackCheck()
 		break;
 
 	case ESkillEffectSpawnType::Custom:
+		Start += OwnerPlayer->GetActorRotation().RotateVector(OwnerPlayer->SkillData->CustomSpawnOffset);
+		End = Start + Forward * OwnerPlayer->SkillData->SkillRange;
 		break;
 	}
 
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(Attack), false, OwnerPlayer);
 
+	const FVector Midpoint = (Start + End) * 0.5f;
+	const float Radius = FMath::Max(1.f, OwnerPlayer->SkillData->SkillRadius);
+	const float HalfHeight = FVector::Distance(Start, End) * 0.5f + Radius;
 	const bool bHasHit = OwnerPlayer->GetWorld()->OverlapMultiByChannel(
-		OverlapResults,
-		Start,
-		FQuat::Identity,
-		CHANNEL_ACTION,
-		FCollisionShape::MakeSphere(OwnerPlayer->SkillData->SkillRadius),
-		Params
-	);
+		OverlapResults, Midpoint, FRotationMatrix::MakeFromZ(Forward).ToQuat(),
+		CHANNEL_ACTION, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params);
+	const int32 SkillDamage = FMath::Max(0, FMath::RoundToInt(OwnerPlayer->SkillData->SkillDamage));
 
 	if (bHasHit)
 	{
@@ -502,7 +492,7 @@ void UPlayerCombatComponent::SkillAttackCheck()
 				{
 					HitEnemies.Add(Enemy);
 					Enemy->RegisterAttacker(OwnerPlayer);
-					Enemy->TakeDamage(OwnerPlayer->CombatStats.AttackPower);
+					Enemy->TakeDamage(SkillDamage);
 				}
 			}
 
@@ -512,14 +502,14 @@ void UPlayerCombatComponent::SkillAttackCheck()
 				{
 					HitBosses.Add(Boss);
 					Boss->RegisterAttacker(OwnerPlayer);
-					Boss->TakeDamage(OwnerPlayer->CombatStats.AttackPower);
+					Boss->TakeDamage(SkillDamage);
 				}
 			}
 		}
 	}
 
 	FVector CapsuleOrigin = Start + (End - Start) * 0.5f;
-	float CapsuleHalfHeight = OwnerPlayer->SkillData->SkillRange * 0.5f;
+	float CapsuleHalfHeight = HalfHeight;
 	FColor DrawColor = bHasHit ? FColor::Green : FColor::Red;
 
 	DrawDebugCapsule(
@@ -533,9 +523,6 @@ void UPlayerCombatComponent::SkillAttackCheck()
 		3.0f
 	);
 
-	OwnerPlayer->bIsSkillActing = false;
-	OwnerPlayer->bIsAttacking = false;
-	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
 }
 
 void UPlayerCombatComponent::EnableWeaponHitBox()
