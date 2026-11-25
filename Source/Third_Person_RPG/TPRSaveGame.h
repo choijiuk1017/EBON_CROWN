@@ -9,6 +9,21 @@
 #include "TPRSaveGame.generated.h"
 
 
+// Persistent inventory entries use asset paths rather than runtime object pointers.
+USTRUCT()
+struct FStoredInventoryItem
+{
+	GENERATED_BODY()
+	UPROPERTY()
+	TSoftObjectPtr<UTPRItemData> ItemData;
+	UPROPERTY()
+	int32 Quantity = 1;
+	UPROPERTY()
+	int32 EnhanceLevel = 0;
+	UPROPERTY()
+	bool bEquipped = false;
+};
+
 USTRUCT(BlueprintType)
 struct FPlayerStatSaveData
 {
@@ -39,6 +54,14 @@ class THIRD_PERSON_RPG_API UTPRSaveGame : public USaveGame
 	GENERATED_BODY()
 
 public:
+	// Absent in legacy saves; distinguishes an empty inventory from old data.
+	UPROPERTY()
+	bool bHasInventorySnapshot = false;
+	UPROPERTY()
+	TArray<FStoredInventoryItem> InventoryItems;
+	UPROPERTY()
+	FName LastRestedSavePointID = NAME_None;
+
 	UPROPERTY(VisibleAnywhere)
 	FVector LastSavedLocation;
 

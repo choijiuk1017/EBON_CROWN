@@ -18,6 +18,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
+#include "Engine/OverlapResult.h"
 
 #define CHANNEL_ACTION ECollisionChannel::ECC_GameTraceChannel2
 
@@ -682,3 +683,59 @@ float UPlayerCombatComponent::GetCurrentWeaponWeight() const
 	return 0.f;
 }
 
+void UPlayerCombatComponent::InitializeSkillEffectPool()
+{
+	if (!OwnerPlayer || !GetWorld())
+	{
+		return;
+	}
+
+	SkillEffectPool.Reserve(SkillEffectPoolSize);
+
+	for (int32 Index = 0; Index < SkillEffectPoolSize; ++Index)
+	{
+		UParticleSystemComponent* EffectComponent =
+			NewObject<UParticleSystemComponent>(OwnerPlayer);
+
+		if (!EffectComponent)
+		{
+			continue;
+		}
+
+		EffectComponent->SetupAttachment(OwnerPlayer->GetRootComponent());
+		EffectComponent->RegisterComponent();
+
+		EffectComponent->SetAutoActivate(false);
+		EffectComponent->SetVisibility(false);
+		EffectComponent->DeactivateSystem();
+
+		SkillEffectPool.Add(EffectComponent);
+	}
+}
+
+UParticleSystemComponent*
+UPlayerCombatComponent::GetAvailableSkillEffect()
+{
+	for (UParticleSystemComponent* EffectComponent : SkillEffectPool)
+	{
+		if (IsValid(EffectComponent) && !EffectComponent->IsActive())
+		{
+			return EffectComponent;
+		}
+	}
+
+	return nullptr;
+}
+
+void UPlayerCombatComponent::ReturnSkillEffectToPool(
+	UParticleSystemComponent* EffectComponent)
+{
+	if (!IsValid(EffectComponent))
+	{
+		return;
+	}
+
+	EffectComponent->DeactivateSystem();
+	EffectComponent->SetVisibility(false);
+	EffectComponent->SetTemplate(nullptr);
+}

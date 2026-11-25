@@ -43,6 +43,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Engine/Engine.h"  
 #include "InputCoreTypes.h" 
+#include "Misc/PackageName.h"
 #include "GameFramework/PlayerController.h"
 
 
@@ -189,7 +190,8 @@ void APlayerCharacter::BeginPlay()
 					if (EquippedId.IsValid()
 						&& SaveData.ItemData
 						&& SaveData.ItemData->GetPrimaryAssetId() == EquippedId
-						&& Cast<UWeaponItemData>(SaveData.ItemData))
+						&& Cast<UWeaponItemData>(SaveData.ItemData)
+						&& (!EquipTarget || SaveData.bEquipped))
 					{
 						EquipTarget = AddedItem;
 					}
@@ -240,7 +242,11 @@ void APlayerCharacter::BeginPlay()
 				const TMap<FName, FSavePointInfo>& SaveMap = GI->GetSavePointMap();
 				if (const FSavePointInfo* FoundInfo = SaveMap.Find(LastID))
 				{
-					SetActorLocation(FoundInfo->Location + FVector(70.f, 0.f, 50.f));	
+					const FName CurrentMap(*UGameplayStatics::GetCurrentLevelName(this, true));
+					if (FPackageName::GetShortFName(FoundInfo->MapName) == CurrentMap)
+					{
+						SetActorLocation(FoundInfo->Location + FVector(70.f, 0.f, 50.f));
+					}
 				}
 			}
 
@@ -848,20 +854,21 @@ void APlayerCharacter::RefreshCurrentEquipped_Potion(UTexture2D* PotionIconTextu
 
 void APlayerCharacter::DrinkPotion()
 {
-	if (bIsDead) return;
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
+	if (bIsDead || bIsInteracting || bIsKneeling || bIsPopupInventory ||
+		bIsRoll || bIsAttacking || bIsSkillActing) return;
+	if ((bIsHPPotion ? HPPotionCount : FPPotionCount) <= 0) return;
+
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (!AnimInstance || !DrinkPotionMontage) return;
+	if (AnimInstance->Montage_IsPlaying(DrinkPotionMontage)) return;
 
-	if (AnimInstance && DrinkPotionMontage)
-	{
-		AnimInstance->Montage_Play(DrinkPotionMontage);
-		
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &APlayerCharacter::UsePotion);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, DrinkPotionMontage);
+	// Lock movement only after the montage actually starts.
+	if (AnimInstance->Montage_Play(DrinkPotionMontage) <= 0.f) return;
+	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
 
-		return; 
-	}
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &APlayerCharacter::UsePotion);
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, DrinkPotionMontage);
 }
 
 void APlayerCharacter::ChangePotion()
@@ -884,7 +891,15 @@ void APlayerCharacter::UsePotion(UAnimMontage* Montage, bool bInterrupted)
 	if (Montage != DrinkPotionMontage)
 		return;
 
-	if (!bInterrupted)
+	// An interrupted drink must release its movement lock too. Do not unlock
+	// movement owned by another action, or revive a dead character.
+	if (!bIsDead && !bIsInteracting && !bIsKneeling && !bIsAttacking && !bIsSkillActing &&
+		GetCharacterMovement()->MovementMode == EMovementMode::MOVE_None)
+	{
+		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+	}
+
+	if (!bInterrupted && !bIsDead)
 	{
 		if (bIsHPPotion)
 		{
@@ -912,7 +927,6 @@ void APlayerCharacter::UsePotion(UAnimMontage* Montage, bool bInterrupted)
 			}
 		}
 
-		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
 	}
 }
 
@@ -948,6 +962,14 @@ void APlayerCharacter::RespawnPlayer()
 	if (GI)
 	{
 		GI->bShouldRespawn = true;
+		if (const FSavePointInfo* SavePoint = GI->GetSavePointMap().Find(GI->LastRestedSavePointID))
+		{
+			if (!SavePoint->MapName.IsNone())
+			{
+				UGameplayStatics::OpenLevel(this, SavePoint->MapName);
+				return;
+			}
+		}
 	}
 
 	UGameplayStatics::OpenLevel(GetWorld(), *CurrentMapName);

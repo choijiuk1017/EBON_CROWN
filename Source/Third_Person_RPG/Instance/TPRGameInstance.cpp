@@ -8,6 +8,8 @@
 #include "Third_Person_RPG/UI/Tutorial/TutorialWidget.h"
 #include "Third_Person_RPG/Inventory/InventoryItem.h"
 #include "Third_Person_RPG/Data/ItemData/WeaponItemData.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Misc/PackageName.h"
 
 void UTPRGameInstance::Init()
 {
@@ -50,6 +52,16 @@ void UTPRGameInstance::ClearSavePoints()
 
 void UTPRGameInstance::SaveGameData()
 {
+	// Capture current state immediately before writing the save.
+	if (APlayerCharacter* Player = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
+	{
+		if (UInventoryComponent* Inventory = Player->GetInventoryComponent())
+		{
+			CacheInventory(Inventory->GetAllItems());
+			CacheEquippedWeapon(Inventory->EquippedWeaponItem);
+		}
+		RegisterPlayerStatFromPlayer(Player);
+	}
 	UTPRSaveGame* SaveGameInstance = Cast<UTPRSaveGame>(UGameplayStatics::CreateSaveGameObject(UTPRSaveGame::StaticClass()));
 
 	if (SaveGameInstance)
@@ -83,10 +95,18 @@ void UTPRGameInstance::SaveGameData()
 		SaveGameInstance->ItemEnhanceLevels.Empty();
 
 		SaveGameInstance->EquippedWeaponAssetId = CachedEquippedWeaponAssetId;
+		SaveGameInstance->LastRestedSavePointID = LastRestedSavePointID;
+		SaveGameInstance->bHasInventorySnapshot = true;
 
 		for (const FInventoryItemSaveData& It : CachedInventoryItems)
 		{
 			if (!It.ItemData) continue;
+			FStoredInventoryItem StoredItem;
+			StoredItem.ItemData = It.ItemData;
+			StoredItem.Quantity = It.Quantity;
+			StoredItem.EnhanceLevel = It.EnhanceLevel;
+			StoredItem.bEquipped = It.bEquipped;
+			SaveGameInstance->InventoryItems.Add(StoredItem);
 
 			const FPrimaryAssetId Id = It.ItemData->GetPrimaryAssetId();
 			SaveGameInstance->ItemEnhanceLevels.Add(Id, It.EnhanceLevel); // ¡Ú ÇÙ½É
@@ -124,6 +144,65 @@ bool UTPRGameInstance::LoadGameData()
 			LoadedEnhanceLevels = LoadedGame->ItemEnhanceLevels;
 
 			CachedEquippedWeaponAssetId = LoadedGame->EquippedWeaponAssetId;
+			LastRestedSavePointID = LoadedGame->LastRestedSavePointID;
+			CachedInventoryItems.Empty();
+
+			if (LoadedGame->bHasInventorySnapshot)
+			{
+				for (const FStoredInventoryItem& StoredItem : LoadedGame->InventoryItems)
+				{
+					UTPRItemData* Data = StoredItem.ItemData.LoadSynchronous();
+					if (!Data || StoredItem.Quantity <= 0)
+					{
+						UE_LOG(LogTemp, Warning, TEXT("Unable to restore inventory item: %s"), *StoredItem.ItemData.ToString());
+						continue;
+					}
+					FInventoryItemSaveData Item;
+					Item.ItemData = Data;
+					Item.Quantity = StoredItem.Quantity;
+					Item.EnhanceLevel = StoredItem.EnhanceLevel;
+					Item.bEquipped = StoredItem.bEquipped;
+					CachedInventoryItems.Add(Item);
+				}
+			}
+			else
+			{
+				// Legacy saves contain IDs but no quantities: recover one of each.
+				FAssetRegistryModule& Registry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+				TArray<FAssetData> Assets;
+				Registry.Get().ScanPathsSynchronous({ TEXT("/Game/Data/Item_Data") });
+				Registry.Get().GetAssetsByPath(FName(TEXT("/Game/Data/Item_Data")), Assets, true);
+				TSet<FPrimaryAssetId> RecoveredIds;
+				for (const FAssetData& Asset : Assets)
+				{
+					const FPrimaryAssetId Id(TEXT("TPRItemData"), Asset.AssetName);
+					if ((!CollectedItemAssets.Contains(Id) && !LoadedEnhanceLevels.Contains(Id) && Id != CachedEquippedWeaponAssetId)
+						|| RecoveredIds.Contains(Id)) continue;
+					UTPRItemData* Data = Cast<UTPRItemData>(Asset.GetAsset());
+					if (!Data || Data->GetPrimaryAssetId() != Id) continue;
+					FInventoryItemSaveData Item;
+					Item.ItemData = Data;
+					Item.Quantity = 1;
+					Item.EnhanceLevel = LoadedEnhanceLevels.FindRef(Id);
+					Item.bEquipped = Id == CachedEquippedWeaponAssetId;
+					CachedInventoryItems.Add(Item);
+					RecoveredIds.Add(Id);
+				}
+
+				// Infer the legacy checkpoint only within the saved map.
+				double NearestDistance = TNumericLimits<double>::Max();
+				for (const auto& Pair : DiscoveredSavePoints)
+				{
+					const FSavePointInfo& Info = Pair.Value;
+					if (Info.MapName.IsNone() || FPackageName::GetShortFName(Info.MapName) != FPackageName::GetShortFName(LoadedGame->LastSavedMapName)) continue;
+					const double Distance = FVector::DistSquared(Info.Location, LoadedGame->LastSavedLocation);
+					if (Distance < NearestDistance)
+					{
+						NearestDistance = Distance;
+						LastRestedSavePointID = Pair.Key;
+					}
+				}
+			}
 
 			return true;
 		}
@@ -213,7 +292,16 @@ bool UTPRGameInstance::HasClearedBoss(FName BossID) const
 
 bool UTPRGameInstance::DeleteSaveData()
 {
-	const bool bDeleted = UGameplayStatics::DeleteGameInSlot(SaveSlotName, UserIndex);
+	// An absent save is already a clean start. Do not continue if deletion fails.
+	if (UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
+	{
+		if (!UGameplayStatics::DeleteGameInSlot(SaveSlotName, UserIndex)
+			|| UGameplayStatics::DoesSaveGameExist(SaveSlotName, UserIndex))
+		{
+			UE_LOG(LogTemp, Error, TEXT("New game cancelled: failed to delete save slot %s"), *SaveSlotName);
+			return false;
+		}
+	}
 
 	DiscoveredSavePoints.Empty();
 	CachedInventoryItems.Empty();
@@ -222,8 +310,18 @@ bool UTPRGameInstance::DeleteSaveData()
 	bHasLoadedStat = false;
 	PendingSavePointID = NAME_None;
 	LastRestedSavePointID = NAME_None;
+	LastActivatedSavePoint.Empty();
+	CollectedItemAssets.Empty();
+	LoadedEnhanceLevels.Empty();
+	FinishedTutorials.Empty();
+	CachedEquippedWeaponAssetId = FPrimaryAssetId();
+	CachedPlayerStat = FPlayerStatSaveData();
+	bHiddenBossUnlocked = false;
+	bShouldRespawn = false;
+	RespawnLocation = FVector::ZeroVector;
+	RespawnRotation = FRotator::ZeroRotator;
 
-	return bDeleted;
+	return true;
 }
 
 

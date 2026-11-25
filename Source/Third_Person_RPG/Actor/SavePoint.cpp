@@ -38,6 +38,7 @@ void ASavePoint::BeginPlay()
 
 
 	SavePointInfo.Location = GetActorLocation();
+	SavePointInfo.MapName = FName(*UGameplayStatics::GetCurrentLevelName(this, true));
 	
 }
 

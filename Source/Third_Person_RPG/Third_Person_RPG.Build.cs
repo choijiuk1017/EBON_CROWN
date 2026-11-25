@@ -25,7 +25,7 @@ public class Third_Person_RPG : ModuleRules
 			"MovieSceneTracks"
         });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry" });
 
         PublicIncludePaths.Add("Third_Person_RPG");
 

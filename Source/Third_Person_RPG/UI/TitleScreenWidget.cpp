@@ -86,7 +86,10 @@ void UTitleScreenWidget::ExecuteSelection()
 	{
 		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance()))
 		{
-			GI->DeleteSaveData();
+			if (!GI->DeleteSaveData())
+			{
+				return;
+			}
 		}
 
 		if (LoadingScreen)
