@@ -2,6 +2,7 @@
 
 
 #include "Third_Person_RPG/Character/BossCharacter.h"
+#include "Third_Person_RPG/Character/CombatBalance.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
@@ -16,6 +17,12 @@
 #include "Components/ProgressBar.h"
 #include "Kismet/GameplayStatics.h"
 #include "BehaviorTree/BlackboardComponent.h"
+
+#include "Misc/ConfigCacheIni.h"
+#include "HAL/IConsoleManager.h"
+
+static TAutoConsoleVariable<int32> CVarDebugBossHitboxes(
+	TEXT("tpr.DebugBossHitboxes"), 0, TEXT("Draw actual boss attack shapes (0/1)."), ECVF_Cheat);
 
 #define CHANNEL_ACTION ECollisionChannel::ECC_GameTraceChannel2
 // Sets default values
@@ -43,6 +50,11 @@ ABossCharacter::ABossCharacter()
 void ABossCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (bUseBalanceProfile)
+	{
+		CombatBalance::Apply(this, BossStats.MaxHP, BossStats.CurrentHP,
+			BossStats.AttackPower, BossStats.Defense, CurrencyReward);
+	}
 
 	PlayerRef = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0));
 
@@ -96,6 +108,7 @@ void ABossCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 void ABossCharacter::BaseAttackCheck()
 {
+	if (bIsDead || AttackRange <= 0.f) return;
 	TArray<FOverlapResult> OverlapResults;
 
 	// 충돌 탐지를 위한 시작 지점
@@ -109,7 +122,9 @@ void ABossCharacter::BaseAttackCheck()
 	FQuat CapsuleRotation = FRotationMatrix::MakeFromZ(GetActorForwardVector()).ToQuat();
 
 	// 오버랩 영역 설정
-	FCollisionShape CollisionShape = FCollisionShape::MakeCapsule(AttackRange, AttackRange * 0.5f);  // Radius, HalfHeight
+	const float Radius = FMath::Clamp(AttackRange * 0.4f, 20.f, 70.f);
+	const float HalfHeight = Radius + AttackRange * 0.5f;
+	FCollisionShape CollisionShape = FCollisionShape::MakeCapsule(Radius, HalfHeight);  // Radius, HalfHeight
 
 	// 쿼리 파라미터
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(AttackOverlap), false, this);
@@ -125,7 +140,7 @@ void ABossCharacter::BaseAttackCheck()
 	);
 
 	// 피격 판정 처리
-	if (bHasHit)
+	if (!OverlapResults.IsEmpty())
 	{
 		TSet<APlayerCharacter*> DamagedPlayers;
 
@@ -146,7 +161,8 @@ void ABossCharacter::BaseAttackCheck()
 
 	// 디버그용 캡슐 시각화
 	FColor DrawColor = bHasHit ? FColor::Green : FColor::Red;
-	DrawDebugCapsule(GetWorld(), CapsuleOrigin, AttackRange * 0.5f, AttackRange, CapsuleRotation, DrawColor, false, 3.0f);
+	if (CVarDebugBossHitboxes.GetValueOnGameThread() != 0)
+		DrawDebugCapsule(GetWorld(), CapsuleOrigin, HalfHeight, Radius, CapsuleRotation, DrawColor, false, 0.5f);
 }
 
 void ABossCharacter::PlayAttackMontageByIndex(int32 Index)
@@ -216,122 +232,79 @@ void ABossCharacter::PatternEnd(UAnimMontage* Montage, bool IsEnded)
 
 void ABossCharacter::SkillAttackCheckByIndex(int32 Index)
 {
-	if (!PatternDatas.IsValidIndex(Index)) return;
+	if (bIsDead || !PatternDatas.IsValidIndex(Index)) return;
+	const USkillData* Data = PatternDatas[Index];
+	if (!IsValid(Data)) return;
 
-	const USkillData* SkillData = PatternDatas[Index];
-	if (!SkillData) return;
-
-	FVector SpawnLocation = GetActorLocation();
-
-	SpawnSkillEffectByData(SkillData);
-
-	TArray<FOverlapResult> OverlapResults;
-
-	// 기본 값
-	FVector Start = GetActorLocation();
-	FVector End = Start;
-
-	// 방향 계산
-	FVector Forward = GetActorForwardVector();
-
-	switch (SkillData->SpawnType)
+	SpawnSkillEffectByData(Data);
+	float Radius = FMath::Max(0.f, Data->SkillRadius);
+	float Range = FMath::Max(0.f, Data->SkillRange);
+	if (bUsePatternCollisionProfiles && GConfig)
 	{
-	case ESkillEffectSpawnType::Forward:
-		Start = GetActorLocation() + Forward * 200.0f;
-		End = Start + Forward * SkillData->SkillRange;
-		break;
-
-	case ESkillEffectSpawnType::Self:
-		Start = GetActorLocation();
-		End = Start + Forward * SkillData->SkillRange;
-		break;
-
-	case ESkillEffectSpawnType::Ground:
-		Start = GetActorLocation() - FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-		End = Start + Forward * SkillData->SkillRange;
-		break;
-
-	case ESkillEffectSpawnType::Custom:
-		Start = GetActorLocation() + GetActorRotation().RotateVector(SkillData->CustomSpawnOffset);
-		End = Start + Forward * SkillData->SkillRange;
-		break;
+		const FString Section = TEXT("EbonCrown.PatternCollision.") + Data->GetPathName();
+		GConfig->GetFloat(*Section, TEXT("Radius"), Radius, GGameIni);
+		GConfig->GetFloat(*Section, TEXT("Range"), Range, GGameIni);
 	}
+	if (!FMath::IsFinite(Radius) || !FMath::IsFinite(Range) || Radius <= 0.f) return;
+	Range = FMath::Max(0.f, Range);
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(Attack), false, this);
+	const FVector Start = GetSkillOrigin(Data);
+	const FVector Forward = GetActorForwardVector();
+	const FVector Center = Start + Forward * (Range * 0.5f);
+	const float HalfHeight = Radius + Range * 0.5f;
+	const FQuat Rotation = FRotationMatrix::MakeFromZ(Forward).ToQuat();
+	const FCollisionShape Shape = Range > KINDA_SMALL_NUMBER
+		? FCollisionShape::MakeCapsule(Radius, HalfHeight)
+		: FCollisionShape::MakeSphere(Radius);
+	TArray<FOverlapResult> Results;
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BossPattern), false, this);
+	GetWorld()->OverlapMultiByChannel(Results, Center, Rotation, CHANNEL_ACTION, Shape, Params);
 
-	bool bHasHit = GetWorld()->OverlapMultiByChannel(
-		OverlapResults,
-		Start,
-		FQuat::Identity,
-		CHANNEL_ACTION,
-		FCollisionShape::MakeSphere(SkillData->SkillRadius),
-		Params
-	);
-
-	if (bHasHit)
+	// OverlapMulti's bool reports blocking hits; overlap-only player components still count.
+	TSet<APlayerCharacter*> DamagedPlayers;
+	for (const FOverlapResult& Result : Results)
 	{
-		TSet<APlayerCharacter*> DamagedPlayers;
-
-		for (const FOverlapResult& Result : OverlapResults)
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(Result.GetActor()))
 		{
-			if (APlayerCharacter* Player = Cast<APlayerCharacter>(Result.GetActor()))
+			if (!DamagedPlayers.Contains(Player))
 			{
-				if (!DamagedPlayers.Contains(Player))
-				{
-					DamagedPlayers.Add(Player);
-					UE_LOG(LogTemp, Warning, TEXT("Player Damaged via Overlap"));
-
-					Player->TakeDamage(SkillData->SkillDamage);
-				}
+				DamagedPlayers.Add(Player);
+				Player->TakeDamage(bUseBalanceProfile
+					? CombatBalance::PatternDamage(this, Data->SkillDamage) : Data->SkillDamage);
 			}
 		}
 	}
+	if (CVarDebugBossHitboxes.GetValueOnGameThread() != 0)
+	{
+		const FColor Color = DamagedPlayers.IsEmpty() ? FColor::Red : FColor::Green;
+		if (Range > KINDA_SMALL_NUMBER)
+			DrawDebugCapsule(GetWorld(), Center, HalfHeight, Radius, Rotation, Color, false, 0.5f);
+		else
+			DrawDebugSphere(GetWorld(), Center, Radius, 24, Color, false, 0.5f);
+	}
+}
 
-	// Capsule 디버그 시각화
-	FVector CapsuleOrigin = Start + (End - Start) * 0.5f;
-	float CapsuleHalfHeight = SkillData->SkillRange * 0.5f;
-	FColor DrawColor = bHasHit ? FColor::Green : FColor::Red;
-
-	DrawDebugCapsule(
-		GetWorld(),
-		CapsuleOrigin,
-		CapsuleHalfHeight,
-		SkillData->SkillRadius,
-		FRotationMatrix::MakeFromZ(Forward).ToQuat(),
-		DrawColor,
-		false,
-		3.0f
-	);
+FVector ABossCharacter::GetSkillOrigin(const USkillData* Data) const
+{
+	switch (Data->SpawnType)
+	{
+	case ESkillEffectSpawnType::Forward:
+		return GetActorLocation() + GetActorForwardVector() * 200.f;
+	case ESkillEffectSpawnType::Ground:
+		return GetActorLocation() - FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
+	case ESkillEffectSpawnType::Custom:
+		return GetActorLocation() + GetActorRotation().RotateVector(Data->CustomSpawnOffset);
+	default:
+		return GetActorLocation();
+	}
 }
 
 void ABossCharacter::SpawnSkillEffectByData(const USkillData* Data)
 {
 	if (!Data || !Data->SkillEffect) return;
 
-	FVector SpawnLocation = GetActorLocation();
-	FRotator SpawnRotation = GetActorRotation();
-
-	switch (Data->SpawnType)
-	{
-	case ESkillEffectSpawnType::Self:
-		SpawnLocation = GetActorLocation();
-		break;
-
-	case ESkillEffectSpawnType::Forward:
-		SpawnLocation = GetActorLocation() + GetActorForwardVector() * 200.0f;
-		break;
-
-	case ESkillEffectSpawnType::Ground:
-		SpawnLocation = GetActorLocation() - FVector(0, 0, GetCapsuleComponent()->GetScaledCapsuleHalfHeight());
-		break;
-
-	case ESkillEffectSpawnType::Custom:
-		SpawnLocation = GetActorLocation() + GetActorRotation().RotateVector(Data->CustomSpawnOffset);
-		break;
-
-	default:
-		break;
-	}
+	const FVector SpawnLocation = GetSkillOrigin(Data);
+	const FRotator SpawnRotation = GetActorRotation();
 
 	UGameplayStatics::SpawnEmitterAtLocation(
 		GetWorld(),
@@ -384,6 +357,7 @@ void ABossCharacter::GrantCurrencyToKiller()
 
 void ABossCharacter::TakeDamage(int32 DamageAmount)
 {
+	if (bIsDead || DamageAmount <= 0) return;
 	const bool bWasAlive = !bIsDead && BossStats.CurrentHP > 0;
 	int32 Defense = BossStats.Defense;
 

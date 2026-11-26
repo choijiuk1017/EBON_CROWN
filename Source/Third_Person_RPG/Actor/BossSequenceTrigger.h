@@ -66,6 +66,9 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void OnSequenceEnd();
 
+	UFUNCTION()
+	void HandleBossDefeated();
+
 	void SetPlayerInputEnabled(bool bEnabled);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Boss")

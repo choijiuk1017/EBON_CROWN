@@ -54,7 +54,10 @@ void ATutorialWidgetTrigger::OnTriggerOverlap(UPrimitiveComponent* OverlappedCom
 	UTPRGameInstance* GI = Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(GetWorld()));
 	if (!GI) return;
 
-	if (GI->FinishedTutorials.Contains(TriggerID)) return;
+	if (!TutorialWidgetClass) return;
+	// Missing IDs fall back to the widget class, so unrelated tutorials do not share None.
+	const FName EffectiveID = TriggerID.IsNone() ? FName(*TutorialWidgetClass->GetPathName()) : TriggerID;
+	if (GI->FinishedTutorials.Contains(EffectiveID)) return;
 
 	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 	if (!PC) return;
@@ -64,8 +67,10 @@ void ATutorialWidgetTrigger::OnTriggerOverlap(UPrimitiveComponent* OverlappedCom
 		UTutorialWidget* TutorialWidget = CreateWidget<UTutorialWidget>(PC, TutorialWidgetClass);
 		if (TutorialWidget)
 		{
+			TutorialWidget->TutorialID = EffectiveID;
+			TutorialWidget->OnTutorialFinished.AddUniqueDynamic(GI, &UTPRGameInstance::OnTutorialFinished);
 			TutorialWidget->AddToViewport(999);
-			TutorialWidget->TutorialID = TriggerID;
+			bHasPlayed = true;
 
 			FInputModeUIOnly InputMode;
 			InputMode.SetWidgetToFocus(TutorialWidget->GetCachedWidget());
@@ -74,11 +79,10 @@ void ATutorialWidgetTrigger::OnTriggerOverlap(UPrimitiveComponent* OverlappedCom
 			PC->bShowMouseCursor = true;
 
 			TutorialWidget->SetKeyboardFocus();
-			TutorialWidget->OnTutorialFinished.AddDynamic(GI, &UTPRGameInstance::OnTutorialFinished);
+			// Completion is bound before widget construction.
 		
 		}
 
 	}
 
-	bHasPlayed = true;
 }

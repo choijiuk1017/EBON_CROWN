@@ -86,6 +86,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy Stats")
 	FBossStats BossStats;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Balance", meta = (ToolTip = "Apply the matching DefaultGame.ini combat profile when play begins. Disable to use authored stats."))
+	bool bUseBalanceProfile = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Balance")
+	bool bUsePatternCollisionProfiles = true;
+
 	UPROPERTY(BlueprintReadOnly, Category = "State")
 	bool bIsDead;
 
@@ -151,6 +157,7 @@ protected:
 	void EndHitReact();
 
 	void SpawnSkillEffectByData(const USkillData* Data);
+	FVector GetSkillOrigin(const USkillData* Data) const;
 
 	void PatternEnd(UAnimMontage* Montage, bool IsEnded);
 

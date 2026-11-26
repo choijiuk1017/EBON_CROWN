@@ -116,7 +116,11 @@ void UPlayerInteractionComponent::Interact()
 
 		if (AnimInstance && OwnerPlayer->KneelingDownMontage)
 		{
-			AnimInstance->Montage_Play(OwnerPlayer->KneelingDownMontage, 1.0f);
+			if (AnimInstance->Montage_Play(OwnerPlayer->KneelingDownMontage, 1.0f) <= 0.f)
+			{
+				OwnerPlayer->EndInteractSavePoint();
+				return;
+			}
 
 			OwnerPlayer->bIsKneeling = true;
 
@@ -127,11 +131,8 @@ void UPlayerInteractionComponent::Interact()
 			return;
 		}
 
-		if (UTPRGameInstance* GI =
-			Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(OwnerPlayer->GetWorld())))
-		{
-			GI->SaveGameData();
-		}
+		OwnerPlayer->EndInteractSavePoint();
+		return;
 	}
 
 	if (OwnerPlayer->CurrentNPC)

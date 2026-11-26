@@ -274,6 +274,7 @@ void UPlayerStatComponent::FillSaveData(FPlayerStatSaveData& OutSaveData) const
 
 	OutSaveData.BaseAttributes = OwnerPlayer->CharacterAttributes;
 	OutSaveData.DerivedStats = OwnerPlayer->DerivedStats;
+	OutSaveData.Level = OwnerPlayer->Level;
 	OutSaveData.Currency = OwnerPlayer->Currency;
 	OutSaveData.SpentCurrencyOnStats = OwnerPlayer->SpentCurrencyOnStats;
 }
@@ -283,6 +284,20 @@ void UPlayerStatComponent::ApplySaveData(const FPlayerStatSaveData& InSaveData)
 	if (!OwnerPlayer) return;
 
 	OwnerPlayer->CharacterAttributes = InSaveData.BaseAttributes;
+	if (InSaveData.Level > 0)
+	{
+		OwnerPlayer->Level = InSaveData.Level;
+	}
+	else
+	{
+		const APlayerCharacter* Defaults = OwnerPlayer->GetClass()->GetDefaultObject<APlayerCharacter>();
+		const auto& A = InSaveData.BaseAttributes;
+		const auto& B = Defaults->CharacterAttributes;
+		const int64 Added = static_cast<int64>(A.Vigor) - B.Vigor + A.Mind - B.Mind
+			+ A.Endurance - B.Endurance + A.Strength - B.Strength + A.Dexterity - B.Dexterity
+			+ A.Intelligence - B.Intelligence + A.Faith - B.Faith + A.Arcane - B.Arcane;
+		OwnerPlayer->Level = static_cast<int32>(FMath::Clamp<int64>(Defaults->Level + Added, 1, INT32_MAX));
+	}
 	OwnerPlayer->Currency = InSaveData.Currency;
 	OwnerPlayer->SpentCurrencyOnStats = InSaveData.SpentCurrencyOnStats;
 

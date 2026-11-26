@@ -2,6 +2,7 @@
 
 
 #include "Third_Person_RPG/Character/LastBoss.h"
+#include "Third_Person_RPG/Instance/TPRGameInstance.h"
 #include "Components/StaticMeshComponent.h"
 #include "LevelSequence.h"
 #include "LevelSequencePlayer.h"
@@ -25,6 +26,12 @@ void ALastBoss::Tick(float DeltaTime)
 	if (bIsDead && !bCutsceneStarted)
 	{
 		bCutsceneStarted = true;
+
+		// Death delegates and the kill reward have completed before this tick.
+		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance()))
+		{
+			GI->SaveGameData();
+		}
 
 		GetWorldTimerManager().SetTimer(
 			CutSceneStartTimer,

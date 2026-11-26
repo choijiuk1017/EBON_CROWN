@@ -78,6 +78,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Enemy Stats")
 	FEnemyStats EnemyStats;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Balance", meta = (ToolTip = "Apply the matching DefaultGame.ini combat profile when play begins. Disable to use authored stats."))
+	bool bUseBalanceProfile = true;
+
 
 	UPROPERTY(BlueprintReadOnly, Category = "State")
 	bool bIsDead;

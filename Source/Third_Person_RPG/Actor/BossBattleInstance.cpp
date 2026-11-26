@@ -23,15 +23,34 @@ void ABossBattleInstance::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (BossSequenceTrigger && BossSequenceTrigger->bHasClearedBoss)
+	if (!IsValid(BossSequenceTrigger))
 	{
+		TArray<AActor*> FoundActors;
+		UGameplayStatics::GetAllActorsWithTag(GetWorld(), BossSequenceTag, FoundActors);
+		for (AActor* Actor : FoundActors)
+		{
+			if (ABossSequenceTrigger* Trigger = Cast<ABossSequenceTrigger>(Actor))
+			{
+				BossSequenceTrigger = Trigger;
+				break;
+			}
+		}
+	}
+
+	const UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance());
+	if (IsValid(BossSequenceTrigger) && GI && GI->HasClearedBoss(BossSequenceTrigger->BossID))
+	{
+		for (AStaticMeshActor* BlockActor : BossRoomBlock)
+		{
+			if (IsValid(BlockActor)) BlockActor->Destroy();
+		}
 		Destroy();
 		return;
 	}
 
-	if (BossRef)
+	if (IsValid(BossRef))
 	{
-		BossRef->OnBossDied.AddDynamic(this, &ABossBattleInstance::OnBossDiedHandler);
+		BossRef->OnBossDied.AddUniqueDynamic(this, &ABossBattleInstance::OnBossDiedHandler);
 	}
 	
 }
@@ -41,7 +60,7 @@ void ABossBattleInstance::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	if (!BossRef)
+	if (!IsValid(BossRef))
 	{
 		TArray<AActor*> FoundActors;
 		UGameplayStatics::GetAllActorsWithTag(GetWorld(), BossActorTag, FoundActors);
@@ -52,12 +71,12 @@ void ABossBattleInstance::Tick(float DeltaTime)
 			if (FoundBoss)
 			{
 				BossRef = FoundBoss;
-				BossRef->OnBossDied.AddDynamic(this, &ABossBattleInstance::OnBossDiedHandler);
+				BossRef->OnBossDied.AddUniqueDynamic(this, &ABossBattleInstance::OnBossDiedHandler);
 			}
 		}
 	}
 
-	if (!BossSequenceTrigger)
+	if (!IsValid(BossSequenceTrigger))
 	{
 		TArray<AActor*> FoundActors;
 		UGameplayStatics::GetAllActorsWithTag(GetWorld(), BossSequenceTag, FoundActors);
@@ -89,17 +108,6 @@ void ABossBattleInstance::OnBossDiedHandler()
         return;
     }
 
-	BossSequenceTrigger->bHasClearedBoss = true;
-
-	if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance()))
-	{
-		GI->RegisterClearedBoss(BossSequenceTrigger->BossID);
-	}
-
-	if (BossSequenceTrigger)
-	{
-		BossSequenceTrigger->StopBossBGMAndResumeAmbient();
-	}
-
+	BossSequenceTrigger->HandleBossDefeated();
+	SetActorTickEnabled(false);
 }
-

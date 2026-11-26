@@ -19,6 +19,11 @@ public:
 	ABossDragon();
 
 	virtual void Tick(float DeltaTime) override;
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	UFUNCTION()
+	void HandleDragonDeath();
 
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
@@ -64,6 +69,12 @@ public:
 
 	UPROPERTY(EditAnywhere)
 	float BreathDamageCooldown = 0.2f;
+
+	UPROPERTY(EditAnywhere, Category = "Attack|Collision", meta = (ClampMin = "0.0"))
+	float BreathRange = 500.f;
+
+	UPROPERTY(EditAnywhere, Category = "Attack|Collision", meta = (ClampMin = "1.0"))
+	float BreathRadius = 100.f;
 
 	bool bHasTriggeredFlyPhase = false;
 

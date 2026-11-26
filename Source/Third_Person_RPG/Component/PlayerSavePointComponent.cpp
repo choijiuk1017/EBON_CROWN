@@ -55,7 +55,11 @@ void UPlayerSavePointComponent::InteractingSavePoint(UAnimMontage* Montage, bool
 
 	UE_LOG(LogTemp, Warning, TEXT("세이브 포인트"));
 
-	if (!OwnerPlayer->OverlappingSavePoint) return;
+	if (bInterrupted || OwnerPlayer->bIsDead || !IsValid(OwnerPlayer->OverlappingSavePoint))
+	{
+		EndInteractSavePoint();
+		return;
+	}
 
 	OwnerPlayer->bIsInteracting = false;
 
@@ -136,7 +140,7 @@ void UPlayerSavePointComponent::EndInteractSavePoint()
 {
 	if (!OwnerPlayer) return;
 
-	if (OwnerPlayer->bIsKneeling && OwnerPlayer->OverlappingSavePoint)
+	if (OwnerPlayer->bIsKneeling || OwnerPlayer->bIsInteracting || OwnerPlayer->bPausedBySavePoint)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("세이브 포인트 상호작용 종료"));
 
@@ -166,7 +170,10 @@ void UPlayerSavePointComponent::EndInteractSavePoint()
 			OwnerPlayer->bPausedBySavePoint = false;
 		}
 
-		OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+		if (!OwnerPlayer->bIsDead)
+		{
+			OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
+		}
 
 		if (UAnimInstance* AnimInstance = OwnerPlayer->GetMesh()->GetAnimInstance())
 		{
@@ -192,6 +199,8 @@ void UPlayerSavePointComponent::EndInteractSavePoint()
 		{
 			PC->SetIgnoreMoveInput(false);
 			PC->SetIgnoreLookInput(false);
+			PC->SetInputMode(FInputModeGameOnly());
+			PC->bShowMouseCursor = false;
 		}
 
 		OwnerPlayer->SetStatusHUDVisible(true);

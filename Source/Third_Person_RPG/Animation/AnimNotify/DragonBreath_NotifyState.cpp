@@ -21,7 +21,7 @@ void UDragonBreath_NotifyState::NotifyTick(
     ABossDragon* Dragon = Cast<ABossDragon>(MeshComp->GetOwner());
     if (!Dragon) return;
 
-    Dragon->ApplyBreathDamage();
+    // Damage is sampled by the breath timer; do not also query every animation frame.
 }
 
 void UDragonBreath_NotifyState::NotifyEnd(

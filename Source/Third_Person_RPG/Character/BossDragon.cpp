@@ -2,6 +2,9 @@
 
 
 #include "Third_Person_RPG/Character/BossDragon.h"
+#include "HAL/IConsoleManager.h"
+#include "DrawDebugHelpers.h"
+#include "Third_Person_RPG/Character/CombatBalance.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -18,9 +21,33 @@ ABossDragon::ABossDragon()
     PrimaryActorTick.bCanEverTick = true;
 }
 
+void ABossDragon::BeginPlay()
+{
+    Super::BeginPlay();
+    OnBossDied.AddUniqueDynamic(this, &ABossDragon::HandleDragonDeath);
+}
+
+void ABossDragon::HandleDragonDeath()
+{
+    GetWorldTimerManager().ClearTimer(FlyFallTimerHandle);
+    EndBreath();
+    bIsFly = false;
+    bFalling = false;
+    GetCharacterMovement()->StopMovementImmediately();
+    GetCharacterMovement()->DisableMovement();
+}
+
+void ABossDragon::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    GetWorldTimerManager().ClearTimer(FlyFallTimerHandle);
+    EndBreath();
+    Super::EndPlay(EndPlayReason);
+}
+
 void ABossDragon::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    if (bIsDead) return;
 
     if (bIsFly)
     {
@@ -37,6 +64,7 @@ void ABossDragon::Tick(float DeltaSeconds)
 
 void ABossDragon::StartFlyPhase()
 {
+    if (bIsDead) return;
     bIsFly = true;
     bFalling = false;
 
@@ -71,6 +99,7 @@ void ABossDragon::StartFlyPhase()
 
 void ABossDragon::StartFalling()
 {
+    if (bIsDead) return;
     bFalling = true;
 
     APlayerCharacter* Player = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(this, 0));
@@ -110,6 +139,7 @@ void ABossDragon::FlyTick(float DeltaSeconds)
 
 void ABossDragon::OnLand(const FVector& LandPos)
 {
+    if (bIsDead) return;
     if (!bPlayedLandImpactSFX && LandImpactSFX)
     {
         UGameplayStatics::PlaySoundAtLocation(
@@ -144,18 +174,23 @@ void ABossDragon::OnLand(const FVector& LandPos)
     }
 
     TArray<FOverlapResult> Overlaps;
-    if (GetWorld()->OverlapMultiByChannel(
+    GetWorld()->OverlapMultiByChannel(
         Overlaps,
         LandPos,
         FQuat::Identity,
         CHANNEL_ACTION,
-        FCollisionShape::MakeSphere(LandAttackRadius)
-        ))
+        FCollisionShape::MakeSphere(FMath::Max(1.f, LandAttackRadius))
+        );
     {
+        TSet<APlayerCharacter*> DamagedPlayers;
         for (auto& O : Overlaps)
         {
             APlayerCharacter* P = Cast<APlayerCharacter>(O.GetActor());
-            if (P) P->TakeDamage(LandAttackDamage);
+            if (P && !DamagedPlayers.Contains(P))
+            {
+                DamagedPlayers.Add(P);
+                P->TakeDamage(bUseBalanceProfile ? CombatBalance::PatternDamage(this, LandAttackDamage) : LandAttackDamage);
+            }
         }
     }
     if (AEnemyAIController* EnemyAI = Cast<AEnemyAIController>(GetController()))
@@ -167,6 +202,7 @@ void ABossDragon::OnLand(const FVector& LandPos)
 
 void ABossDragon::StartBreath()
 {
+    if (bIsDead) return;
     GetCharacterMovement()->RotationRate = FRotator(0.f, 0.f, 0.f);
 	if (!BreathEffect) return;
 
@@ -193,61 +229,33 @@ void ABossDragon::StartBreath()
 
 void ABossDragon::ApplyBreathDamage()
 {
+    if (bIsDead || BreathRadius <= 0.f) return;
     const float CurrentTime = GetWorld()->GetTimeSeconds();
-
-    FVector Start = GetMesh()->GetSocketLocation("FireBreathSocket");
-    FTransform SocketTransform = GetMesh()->GetSocketTransform("FireBreathSocket");
-    FVector Dir = SocketTransform.GetUnitAxis(EAxis::Z);
-    Dir.Normalize();
-
-    const float MaxDistance = 500.f;
-    const float Radius = 100.f;
-    const int Steps = 5;
-
+    const FTransform Socket = GetMesh()->GetSocketTransform("FireBreathSocket");
+    const FVector Dir = Socket.GetUnitAxis(EAxis::Z).GetSafeNormal();
+    const float Range = FMath::Max(0.f, BreathRange);
+    const FVector Center = Socket.GetLocation() + Dir * Range * 0.5f;
+    const float HalfHeight = BreathRadius + Range * 0.5f;
+    const FQuat Rotation = FRotationMatrix::MakeFromZ(Dir).ToQuat();
     TArray<FOverlapResult> Overlaps;
-    FCollisionQueryParams Params;
-    Params.AddIgnoredActor(this);
+    FCollisionQueryParams Params(SCENE_QUERY_STAT(DragonBreath), false, this);
+    GetWorld()->OverlapMultiByChannel(Overlaps, Center, Rotation, CHANNEL_ACTION,
+        FCollisionShape::MakeCapsule(BreathRadius, HalfHeight), Params);
 
-    for (int i = 0; i < Steps; i++)
+    TSet<APlayerCharacter*> DamagedPlayers;
+    for (const FOverlapResult& O : Overlaps)
     {
-        float Alpha = (float)i / (Steps - 1);
-        FVector CheckPos = Start + Dir * (MaxDistance * Alpha);
-
-        Overlaps.Reset();
-
-        bool bHit = GetWorld()->OverlapMultiByChannel(
-            Overlaps,
-            CheckPos,
-            FQuat::Identity,
-            CHANNEL_ACTION,
-            FCollisionShape::MakeSphere(Radius),
-            Params
-        );
-
-        if (bHit)
-        {
-            for (const FOverlapResult& O : Overlaps)
-            {
-                APlayerCharacter* Player = Cast<APlayerCharacter>(O.GetActor());
-                if (!Player) continue;
-
-                if (DamageCooldownMap.Contains(Player))
-                {
-                    float LastTime = DamageCooldownMap[Player];
-                    if (CurrentTime - LastTime < BreathDamageCooldown)
-                    {
-                        continue;
-                    }
-                }
-
-                Player->TakeDamage(150.0f);
-
-                DamageCooldownMap.Add(Player, CurrentTime);
-            }
-        }
-
-        DrawDebugSphere(GetWorld(), CheckPos, Radius, 6, FColor::Red, false, 0.05f);
+        APlayerCharacter* Player = Cast<APlayerCharacter>(O.GetActor());
+        if (!Player || DamagedPlayers.Contains(Player)) continue;
+        DamagedPlayers.Add(Player);
+        const float* LastTime = DamageCooldownMap.Find(Player);
+        if (LastTime && CurrentTime - *LastTime < FMath::Max(0.f, BreathDamageCooldown)) continue;
+        Player->TakeDamage(bUseBalanceProfile ? CombatBalance::PatternDamage(this, 150.f) : 150);
+        DamageCooldownMap.Add(Player, CurrentTime);
     }
+    const IConsoleVariable* Debug = IConsoleManager::Get().FindConsoleVariable(TEXT("tpr.DebugBossHitboxes"));
+    if (Debug && Debug->GetInt() != 0)
+        DrawDebugCapsule(GetWorld(), Center, HalfHeight, BreathRadius, Rotation, FColor::Orange, false, 0.2f);
 }
 
 void ABossDragon::EndBreath()

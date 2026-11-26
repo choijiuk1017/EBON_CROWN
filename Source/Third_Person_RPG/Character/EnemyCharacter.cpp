@@ -2,6 +2,7 @@
 
 
 #include "Third_Person_RPG/Character/EnemyCharacter.h"
+#include "Third_Person_RPG/Character/CombatBalance.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
@@ -46,6 +47,11 @@ AEnemyCharacter::AEnemyCharacter()
 void AEnemyCharacter::BeginPlay()
 {
 	Super::BeginPlay();
+	if (bUseBalanceProfile)
+	{
+		CombatBalance::Apply(this, EnemyStats.MaxHP, EnemyStats.CurrentHP,
+			EnemyStats.AttackPower, EnemyStats.Defense, CurrencyReward);
+	}
 
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
 	{

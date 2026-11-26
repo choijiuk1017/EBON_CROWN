@@ -110,6 +110,8 @@ public:
 	UFUNCTION()
 	void OnTutorialFinished(FName TutorialID);
 
+	void LoadTutorialHistory();
+
 	UPROPERTY(BlueprintReadWrite)
 	FName LastRestedSavePointID;
 

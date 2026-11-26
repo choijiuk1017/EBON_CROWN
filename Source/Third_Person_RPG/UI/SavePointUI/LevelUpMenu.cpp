@@ -2,6 +2,7 @@
 
 
 #include "Third_Person_RPG/UI/SavePointUI/LevelUpMenu.h"
+#include "Third_Person_RPG/Character/CombatBalance.h"
 
 #include "Components/Button.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
@@ -144,7 +145,13 @@ void ULevelUpMenu::RefreshPreview()
 		const int32 Remain = FMath::Max(0, PC->Currency - NeedCurrency);
 
 		if (LevelUpText)           LevelUpText->SetText(FText::AsNumber(PC->Level + PendingLevels));
-		if (NeedCurrencyText)      NeedCurrencyText->SetText(FText::AsNumber(NeedCurrency));
+		if (NeedCurrencyText)
+		{
+			const int32 DisplayCost = PendingLevels > 0 ? NeedCurrency : RequiredCurrencyForLevels(1);
+			NeedCurrencyText->SetText(FText::AsNumber(DisplayCost));
+			NeedCurrencyText->SetColorAndOpacity(FSlateColor(
+				PC->Currency < DisplayCost ? FLinearColor(1.f, 0.25f, 0.25f) : FLinearColor::White));
+		}
 		if (RemainingCurrencyText) RemainingCurrencyText->SetText(FText::AsNumber(Remain));
 	}
 }
@@ -218,9 +225,7 @@ int32 ULevelUpMenu::SumPendingLevels() const
 
 int32 ULevelUpMenu::GetCostForLevel(int32 TargetLevel) const
 {
-	const int32 Base = 100;
-	const int32 Step = 50;
-	return Base + (TargetLevel - 1) * Step;
+	return CombatBalance::LevelUpCost(TargetLevel);
 }
 
 int32 ULevelUpMenu::RequiredCurrencyForLevels(int32 N) const
@@ -229,12 +234,14 @@ int32 ULevelUpMenu::RequiredCurrencyForLevels(int32 N) const
 
 	if (APlayerCharacter* PC = Cast<APlayerCharacter>(GetOwningPlayerPawn()))
 	{
-		int32 Sum = 0;
+		int64 Sum = 0;
 		for (int32 i = 1; i <= N; ++i)
 		{
-			Sum += GetCostForLevel(PC->Level + i);
+			const int32 TargetLevel = static_cast<int32>(FMath::Min<int64>(static_cast<int64>(PC->Level) + i, INT32_MAX));
+			Sum += GetCostForLevel(TargetLevel);
+			if (Sum >= INT32_MAX) return INT32_MAX;
 		}
-		return Sum;
+		return static_cast<int32>(Sum);
 	}
 	return 0;
 }
@@ -282,7 +289,8 @@ void ULevelUpMenu::ApplyPendingToPlayer()
 		const int32 NeedCurrency = CalculateRequiredCurrency();
 
 		if (PendingLevels <= 0) return;
-		if (PC->Currency < NeedCurrency) return;
+		if (PC->Currency < NeedCurrency || NeedCurrency == INT32_MAX) return;
+		if (static_cast<int64>(PC->SpentCurrencyOnStats) + NeedCurrency > INT32_MAX) return;
 
 		auto& Attr = PC->CharacterAttributes;
 		Attr.Vigor += Pending[0];

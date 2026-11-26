@@ -184,68 +184,102 @@ void ABossSequenceTrigger::OnTriggerOverlap(UPrimitiveComponent* OverlappedComp,
 
 void ABossSequenceTrigger::OnSequenceEnd()
 {
-	ALevelSequenceActor* SeqActorForTransform =
-		PlayedSequenceActor ? PlayedSequenceActor.Get() : SequenceActor.Get();
-	if (!SeqActorForTransform)
+	ALevelSequenceActor* SeqActor = IsValid(PlayedSequenceActor.Get())
+		? PlayedSequenceActor.Get() : SequenceActor.Get();
+	if (IsValid(SeqActor) && SeqActor->GetSequencePlayer())
 	{
+		SeqActor->GetSequencePlayer()->OnFinished.RemoveDynamic(this, &ABossSequenceTrigger::OnSequenceEnd);
+	}
+
+	// Only close the arena and remove cinematic actors after a valid boss exists.
+	ABossCharacter* Boss = nullptr;
+	const TSubclassOf<AActor> BossClass = bSpawnHiddenBossThisRun ? HiddenBossClass : CombatBossClass;
+	if (IsValid(SeqActor) && BossClass && BossClass->IsChildOf(ABossCharacter::StaticClass()))
+	{
+		FTransform SpawnTransform = SeqActor->GetTransform();
+		SpawnTransform.AddToTranslation(FVector(0, 0, 100.f));
+		if (SpawnTransform.IsValid())
+		{
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+			Boss = GetWorld()->SpawnActor<ABossCharacter>(BossClass, SpawnTransform, Params);
+		}
+	}
+
+	if (!IsValid(Boss))
+	{
+		UE_LOG(LogTemp, Error, TEXT("Boss spawn failed for trigger %s; restoring arena access."), *GetName());
+		for (AStaticMeshActor* Block : BossRoomBlock)
+		{
+			if (IsValid(Block))
+			{
+				Block->SetActorHiddenInGame(true);
+				Block->SetActorEnableCollision(false);
+			}
+		}
+		for (ASkeletalMeshActor* Actor : SkeletalMeshActorsToDestroy)
+		{
+			if (IsValid(Actor))
+			{
+				Actor->SetActorHiddenInGame(true);
+				Actor->SetActorEnableCollision(false);
+			}
+		}
+		StopBossBGMAndResumeAmbient();
 		SetPlayerInputEnabled(true);
 		SetAllUIVisible(true);
-		Destroy();
+		bHasPlayed = false;
 		return;
 	}
 
-	FTransform SpawnTransform = SeqActorForTransform->GetTransform();
-	SpawnTransform.AddToTranslation(FVector(0, 0, 100.f));
-
-	for (AStaticMeshActor* MeshActor : StaticMeshActorsToDestroy)
+	Boss->OnBossDied.AddUniqueDynamic(this, &ABossSequenceTrigger::HandleBossDefeated);
+	for (AStaticMeshActor* Actor : StaticMeshActorsToDestroy)
 	{
-		if (IsValid(MeshActor))
+		if (IsValid(Actor)) Actor->Destroy();
+	}
+	for (ASkeletalMeshActor* Actor : SkeletalMeshActorsToDestroy)
+	{
+		if (IsValid(Actor)) Actor->Destroy();
+	}
+	for (AStaticMeshActor* Block : BossRoomBlock)
+	{
+		if (IsValid(Block))
 		{
-			MeshActor->Destroy();
+			Block->SetActorHiddenInGame(false);
+			Block->SetActorEnableCollision(true);
 		}
 	}
 
-	for (ASkeletalMeshActor* SkeletalActor : SkeletalMeshActorsToDestroy)
+	SetPlayerInputEnabled(true);
+	SetAllUIVisible(true);
+	// Keep the boss ID and audio owner alive until the fight ends.
+	TriggerBox->SetGenerateOverlapEvents(false);
+	SetActorEnableCollision(false);
+	SetActorTickEnabled(false);
+}
+
+void ABossSequenceTrigger::HandleBossDefeated()
+{
+	if (bHasClearedBoss) return;
+	bHasClearedBoss = true;
+
+	if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(GetGameInstance()))
 	{
-		if (IsValid(SkeletalActor))
-		{
-			SkeletalActor->Destroy();
-		}
+		GI->RegisterClearedBoss(BossID);
+	}
+	if (BossID.IsNone())
+	{
+		UE_LOG(LogTemp, Error, TEXT("Boss trigger %s has no BossID; clear progress cannot be retained."), *GetName());
 	}
 
 	for (AStaticMeshActor* BlockActor : BossRoomBlock)
 	{
 		if (IsValid(BlockActor))
 		{
-			BlockActor->SetActorHiddenInGame(false);
-			BlockActor->SetActorEnableCollision(true);
+			BlockActor->Destroy();
 		}
 	}
-
-	if (bSpawnHiddenBossThisRun)
-	{
-		if (HiddenBossClass && SpawnTransform.IsValid())
-		{
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			GetWorld()->SpawnActor<AActor>(HiddenBossClass, SpawnTransform, Params);
-		}
-	}
-	else
-	{
-		if (CombatBossClass && SpawnTransform.IsValid())
-		{
-			FActorSpawnParameters Params;
-			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-			GetWorld()->SpawnActor<AActor>(CombatBossClass, SpawnTransform, Params);
-		}
-	}
-
-	SetPlayerInputEnabled(true);
-	SetAllUIVisible(true);
-
-	Destroy();
-
+	StopBossBGMAndResumeAmbient();
 }
 
 void ABossSequenceTrigger::SetAllUIVisible(bool bVisible)

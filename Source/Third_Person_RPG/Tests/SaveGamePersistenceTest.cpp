@@ -12,6 +12,9 @@ bool FInventorySaveRoundTripTest::RunTest(const FString& Parameters)
 {
 	UTPRSaveGame* Save = NewObject<UTPRSaveGame>();
 	TestFalse(TEXT("Legacy saves default to no inventory snapshot"), Save->bHasInventorySnapshot);
+	Save->FinishedTutorials.Add(TEXT("MovementTutorial"));
+	Save->PlayerStat.Level = 17;
+	Save->PlayerStat.SpentCurrencyOnStats = 12345;
 	Save->bHasInventorySnapshot = true;
 	Save->LastRestedSavePointID = TEXT("CampCheckpoint");
 	FSavePointInfo Point;
@@ -37,6 +40,9 @@ bool FInventorySaveRoundTripTest::RunTest(const FString& Parameters)
 	if (!TestTrue(TEXT("Serialize save without touching the user's slot"), UGameplayStatics::SaveGameToMemory(Save, Bytes))) return false;
 	UTPRSaveGame* Loaded = Cast<UTPRSaveGame>(UGameplayStatics::LoadGameFromMemory(Bytes));
 	if (!TestNotNull(TEXT("Deserialize save"), Loaded)) return false;
+	TestTrue(TEXT("Tutorial history survives"), Loaded->FinishedTutorials.Contains(TEXT("MovementTutorial")));
+	TestEqual(TEXT("Player level survives"), Loaded->PlayerStat.Level, 17);
+	TestEqual(TEXT("Actual respec refund survives"), Loaded->PlayerStat.SpentCurrencyOnStats, 12345);
 	TestTrue(TEXT("Snapshot version survives"), Loaded->bHasInventorySnapshot);
 	TestEqual(TEXT("Checkpoint ID survives"), Loaded->LastRestedSavePointID, Save->LastRestedSavePointID);
 	TestEqual(TEXT("Equipped weapon ID survives"), Loaded->EquippedWeaponAssetId, Save->EquippedWeaponAssetId);

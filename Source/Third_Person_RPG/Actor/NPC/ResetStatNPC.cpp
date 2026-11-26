@@ -15,6 +15,7 @@ void AResetStatNPC::OnYesSelected(APlayerCharacter* Player)
 	if (!Player) return;
 
 	Player->CharacterAttributes = DefaultAttributes;
+	Player->Level = Player->GetClass()->GetDefaultObject<APlayerCharacter>()->Level;
 
 	Player->RecalculateStatsAfterLevelUp(true);
 

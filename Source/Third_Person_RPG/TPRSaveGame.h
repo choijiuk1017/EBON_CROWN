@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 #pragma once
 
@@ -32,11 +32,15 @@ struct FPlayerStatSaveData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
 	FCharacterAttributes BaseAttributes;
 
+	// Zero identifies older saves that omitted the player's level.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
+	int32 Level = 0;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
 	FDerivedStats DerivedStats;
 
 	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
-	//FCombatStats CombatStats; // HP/FP/StaminaÀÇ Current °ª Æ÷ÇÔµÈ °É·Î °¡Á¤
+	//FCombatStats CombatStats; // HP/FP/Staminaï¿½ï¿½ Current ï¿½ï¿½ ï¿½ï¿½ï¿½Ôµï¿½ ï¿½É·ï¿½ ï¿½ï¿½ï¿½ï¿½
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Economy")
 	int32 Currency = 0;
@@ -83,6 +87,9 @@ public:
 
 	UPROPERTY()
 	TSet<FName> ClearedBoss;
+
+	UPROPERTY()
+	TSet<FName> FinishedTutorials;
 
 	UPROPERTY()
 	bool bHiddenBossUnlocked = false;

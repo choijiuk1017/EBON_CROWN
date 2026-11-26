@@ -15,6 +15,7 @@ void UTPRGameInstance::Init()
 {
 	Super::Init();
 	LoadGameData();
+	LoadTutorialHistory();
 }
 
 void UTPRGameInstance::RegisterSavePoint(const FSavePointInfo& SavePointInfo)
@@ -87,6 +88,7 @@ void UTPRGameInstance::SaveGameData()
 		SaveGameInstance->MetNPCs = MetNPCs;
 
 		SaveGameInstance->ClearedBoss = ClearedBoss;
+		SaveGameInstance->FinishedTutorials = FinishedTutorials;
 
 		SaveGameInstance->CollectedItemAssets = CollectedItemAssets;
 
@@ -128,7 +130,8 @@ bool UTPRGameInstance::LoadGameData()
 			PendingSavePointID = NAME_None;
 			bShouldRespawn = false;
 			bRestoreContinueLocation = false;
-			FinishedTutorials.Empty();
+			FinishedTutorials.Append(LoadedGame->FinishedTutorials);
+			LoadTutorialHistory();
 			DiscoveredSavePoints.Empty();
 
 			for (const FSavePointInfo& Info : LoadedGame->AllDiscoveredSavePoints)
@@ -281,11 +284,34 @@ void UTPRGameInstance::RegisterTutorialWidget(UTutorialWidget* Widget)
 	Widget->OnTutorialFinished.AddDynamic(this, &UTPRGameInstance::OnTutorialFinished);
 }
 
+void UTPRGameInstance::LoadTutorialHistory()
+{
+	const FString TutorialSlot = SaveSlotName + TEXT("_Tutorials");
+	if (UGameplayStatics::DoesSaveGameExist(TutorialSlot, UserIndex))
+	{
+		if (const UTPRSaveGame* History = Cast<UTPRSaveGame>(
+			UGameplayStatics::LoadGameFromSlot(TutorialSlot, UserIndex)))
+		{
+			FinishedTutorials.Append(History->FinishedTutorials);
+		}
+	}
+}
+
 void UTPRGameInstance::OnTutorialFinished(FName TutorialID)
 {
-	if (!FinishedTutorials.Contains(TutorialID))
+	if (TutorialID.IsNone()) return;
+	FinishedTutorials.Add(TutorialID);
+
+	// Persist only tutorial history: dismissing a popup must not move the gameplay save.
+	UTPRSaveGame* History = Cast<UTPRSaveGame>(
+		UGameplayStatics::CreateSaveGameObject(UTPRSaveGame::StaticClass()));
+	if (History)
 	{
-		FinishedTutorials.Add(TutorialID);
+		History->FinishedTutorials = FinishedTutorials;
+		if (!UGameplayStatics::SaveGameToSlot(History, SaveSlotName + TEXT("_Tutorials"), UserIndex))
+		{
+			UE_LOG(LogTemp, Error, TEXT("Failed to save tutorial history."));
+		}
 	}
 }
 
@@ -324,6 +350,14 @@ bool UTPRGameInstance::DeleteSaveData()
 			UE_LOG(LogTemp, Error, TEXT("New game cancelled: failed to delete save slot %s"), *SaveSlotName);
 			return false;
 		}
+	}
+
+	const FString TutorialSlot = SaveSlotName + TEXT("_Tutorials");
+	if (UGameplayStatics::DoesSaveGameExist(TutorialSlot, UserIndex)
+		&& !UGameplayStatics::DeleteGameInSlot(TutorialSlot, UserIndex))
+	{
+		UE_LOG(LogTemp, Error, TEXT("New game cancelled: failed to delete tutorial history."));
+		return false;
 	}
 
 	DiscoveredSavePoints.Empty();
