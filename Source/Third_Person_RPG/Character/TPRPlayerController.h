@@ -31,6 +31,21 @@ public:
 	virtual void FlushPressedKeys() override;
 
 protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Force Feedback")
+	bool bCombatForceFeedbackEnabled = true;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Force Feedback", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float AttackHitRumbleIntensity = 0.70f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Force Feedback", meta = (ClampMin = "0.0", ClampMax = "1.0"))
+	float ReceivedHitRumbleIntensity = 1.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Force Feedback", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float AttackHitRumbleDuration = 0.08f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Force Feedback", meta = (ClampMin = "0.0", ClampMax = "0.5"))
+	float ReceivedHitRumbleDuration = 0.14f;
+
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera Shake", meta = (ClampMin = "0.0", ClampMax = "3.0"))
 	float AttackHitShakeScale = 0.65f;
 
@@ -38,6 +53,7 @@ protected:
 	float ReceivedHitShakeScale = 1.0f;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void SetupInputComponent() override;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Input")
@@ -83,6 +99,8 @@ protected:
 	TObjectPtr<UInputAction> IA_ESC;
 
 private:
+	FDynamicForceFeedbackHandle CombatRumbleHandle = 0;
+	void StopCombatRumble();
 	bool bPadBDown = false;
 	bool bPadSprinting = false;
 	double PadBStart = 0.0;

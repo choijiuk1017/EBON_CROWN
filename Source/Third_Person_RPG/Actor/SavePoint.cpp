@@ -27,7 +27,7 @@ ASavePoint::ASavePoint()
 	Trigger->OnComponentEndOverlap.AddDynamic(this, &ASavePoint::OnOverlapEnd);
 
 
-	HelpText = FText::FromString(TEXT("'F'키를 눌러 휴식"));
+	HelpText = FText::FromString(TEXT("휴식"));
 
 }
 

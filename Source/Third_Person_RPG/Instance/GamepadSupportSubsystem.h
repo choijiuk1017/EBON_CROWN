@@ -9,6 +9,7 @@ class THIRD_PERSON_RPG_API UGamepadSupportSubsystem : public UTickableWorldSubsy
 {
     GENERATED_BODY()
 public:
+    bool IsUsingGamepad() const;
     virtual void Tick(float DeltaTime) override;
     virtual void Deinitialize() override;
     virtual TStatId GetStatId() const override;

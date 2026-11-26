@@ -23,6 +23,10 @@
 #include "Components/Image.h"
 #include "UI/InteractionWidget.h"
 #include "UI/DialogueWidget.h"
+#include "UI/InputPromptIcons.h"
+#include "UI/InlineInputPrompts.h"
+#include "Widgets/Images/SImage.h"
+#include "Widgets/SBoxPanel.h"
 
 class FGamepadUIProcessor final : public IInputProcessor
 {
@@ -111,6 +115,7 @@ public:
     virtual void Tick(float, FSlateApplication&, TSharedRef<ICursor>) override
     {
         RefreshPrompts();
+        RefreshIconHint();
         UUserWidget* Menu = FindMenu();
         if (!Menu) { Axis = FVector2D::ZeroVector; HeldDirection = FKey(); return; }
         FKey Direction;
@@ -138,32 +143,119 @@ public:
     }
 private:
 
-    struct FPromptState { FText Original; FText Applied; };
-    TMap<TWeakObjectPtr<UTextBlock>, FPromptState> PromptStates;
-    TMap<TWeakObjectPtr<UImage>, float> KeyImages;
+    FInlineInputPrompts InlinePrompts;
+    struct FKeyImageState { FString OriginalName; FString AppliedIcon; };
+    TMap<TWeakObjectPtr<UImage>, FKeyImageState> KeyImages;
+    FInputPromptIcons Icons;
+    TSharedPtr<SHorizontalBox> IconHint;
+    FString HintContext;
+    bool bHintWasGamepad = false;
+    void UpdateKeyImage(UImage* Image, bool bDialogue)
+    {
+        FKeyImageState* State = KeyImages.Find(Image);
+        UObject* Resource = Image->GetBrush().GetResourceObject();
+        if (!State)
+        {
+            if (!Resource) return;
+            const FString Path = Resource->GetPathName();
+            if (!Path.StartsWith(TEXT("/Game/ImageResource/UI/Key/")) &&
+                !Path.StartsWith(TEXT("/Game/UI/InputPrompts/"))) return;
+            State = &KeyImages.Add(Image, { Resource->GetName(), FString() });
+        }
+        struct FMapping { const TCHAR* Original; const TCHAR* Keyboard; const TCHAR* Pad; };
+        static const FMapping Mapping[] = {
+            { TEXT("keyboard_arrows"), TEXT("keyboard_arrows"), TEXT("xbox_dpad") },
+            { TEXT("keyboard_escape"), TEXT("keyboard_escape"), TEXT("xbox_button_color_b") },
+            { TEXT("keyboard_space"), TEXT("keyboard_space"), TEXT("xbox_button_menu") },
+            { TEXT("Interaction_F_Key"), TEXT("keyboard_f"), TEXT("xbox_button_color_y") },
+            { TEXT("Tutorial_Enter_Key"), TEXT("keyboard_enter"), TEXT("xbox_button_color_a") },
+            { TEXT("Tutorial_Mouse_Active"), TEXT("mouse_left"), TEXT("xbox_rb") },
+            { TEXT("Tutorial_Mouse"), TEXT("mouse"), TEXT("xbox_stick_r") },
+            { TEXT("Tutorial_A_Key"), TEXT("keyboard_a"), TEXT("xbox_stick_l_left") },
+            { TEXT("Tutorial_D_Key"), TEXT("keyboard_d"), TEXT("xbox_stick_l_right") },
+            { TEXT("Tutorial_W_Key"), TEXT("keyboard_w"), TEXT("xbox_stick_l_up") },
+            { TEXT("Tutorial_S_Key"), TEXT("keyboard_s"), TEXT("xbox_stick_l_down") },
+            { TEXT("Tutorial_C_Key"), TEXT("keyboard_c"), TEXT("xbox_button_color_b") },
+            { TEXT("Tutorial_E_Key"), TEXT("keyboard_e"), TEXT("xbox_button_view") },
+            { TEXT("Tutorial_Q_Key"), TEXT("keyboard_q"), TEXT("xbox_rt") },
+            { TEXT("Tutorial_X_Key"), TEXT("keyboard_x"), TEXT("xbox_button_color_x") },
+            { TEXT("Tutorial_Z_Key"), TEXT("keyboard_z"), TEXT("xbox_dpad_down") },
+        };
+        for (const FMapping& Entry : Mapping)
+        {
+            if (State->OriginalName != Entry.Original && State->OriginalName != Entry.Keyboard) continue;
+            FString Icon = bUsingGamepad ? Entry.Pad : Entry.Keyboard;
+            if (bUsingGamepad && bDialogue && FCString::Strcmp(Entry.Keyboard, TEXT("keyboard_enter")) == 0) Icon = TEXT("xbox_button_color_y");
+            if (State->AppliedIcon == Icon) return;
+            if (const FSlateBrush* Brush = Icons.Get(Icon))
+            {
+                FSlateBrush Replacement = *Brush;
+                Replacement.ImageSize = Image->GetBrush().ImageSize;
+                Image->SetBrush(Replacement);
+                State->AppliedIcon = Icon;
+            }
+            return;
+        }
+    }
+public:
+    TSharedRef<SWidget> MakeIconHint()
+    {
+        SAssignNew(IconHint, SHorizontalBox);
+        RefreshIconHint();
+        return IconHint.ToSharedRef();
+    }
+private:
+    void RefreshIconHint()
+    {
+        if (!IconHint) return;
+        UUserWidget* Menu = FindMenu();
+        const FString Context = Menu ? Menu->GetClass()->GetName() : TEXT("Gameplay");
+        if (Context == HintContext && bUsingGamepad == bHintWasGamepad) return;
+        HintContext = Context;
+        bHintWasGamepad = bUsingGamepad;
+        IconHint->ClearChildren();
+        auto Add = [&](const TCHAR* Keyboard, const TCHAR* Pad, const TCHAR* Label)
+        {
+            const FSlateBrush* Brush = Icons.Get(bUsingGamepad ? Pad : Keyboard);
+            if (Brush)
+                IconHint->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
+                [SNew(SBox).WidthOverride(32.f).HeightOverride(32.f)[SNew(SImage).Image(Brush)]];
+            IconHint->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
+                [SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 13))
+                .ShadowOffset(FVector2D(1.f, 1.f)).ShadowColorAndOpacity(FLinearColor::Black).Text(FText::FromString(Label))];
+        };
+        if (Menu)
+        {
+            if (Menu->IsA<UTutorialWidget>()) { Add(TEXT("keyboard_enter"), TEXT("xbox_button_color_a"), TEXT("\ud655\uc778")); return; }
+            Add(TEXT("keyboard_arrows"), TEXT("xbox_dpad"), TEXT("\uc120\ud0dd"));
+            Add(TEXT("keyboard_enter"), TEXT("xbox_button_color_a"), Menu->IsA<UInventoryWidget>() ? TEXT("\uc7a5\ucc29") : TEXT("\ud655\uc778"));
+            if (Menu->IsA<UInventoryWidget>())
+            {
+                Add(TEXT("keyboard_delete"), TEXT("xbox_button_color_y"), TEXT("\ud574\uc81c"));
+                Add(TEXT("keyboard_page_up"), TEXT("xbox_lb"), TEXT("\uc774\uc804 \ud0ed"));
+                Add(TEXT("keyboard_page_down"), TEXT("xbox_rb"), TEXT("\ub2e4\uc74c \ud0ed"));
+            }
+            if (!Menu->IsA<UTitleScreenWidget>())
+                Add(Menu->IsA<UpauseMenuWidget>() ? TEXT("keyboard_escape") : Menu->IsA<UInventoryWidget>() ? TEXT("keyboard_e") : TEXT("keyboard_x"), TEXT("xbox_button_color_b"), TEXT("\ub2eb\uae30"));
+            return;
+        }
+        Add(TEXT("keyboard_f"), TEXT("xbox_button_color_y"), TEXT("\uc0c1\ud638\uc791\uc6a9"));
+        Add(TEXT("mouse_left"), TEXT("xbox_rb"), TEXT("\uacf5\uaca9"));
+        Add(TEXT("keyboard_q"), TEXT("xbox_rt"), TEXT("\uc2a4\ud0ac"));
+        Add(TEXT("keyboard_c"), TEXT("xbox_button_color_b"), TEXT("\uad6c\ub974\uae30"));
+        Add(TEXT("keyboard_x"), TEXT("xbox_button_color_x"), TEXT("\ud3ec\uc158"));
+        Add(TEXT("keyboard_e"), TEXT("xbox_button_view"), TEXT("\uc778\ubca4\ud1a0\ub9ac"));
+    }
+
     double NextPromptRefresh = 0;
     void RefreshPrompts()
     {
         const double Now = FPlatformTime::Seconds();
         if (Now < NextPromptRefresh || !World.IsValid()) return;
         NextPromptRefresh = Now + 0.1;
-        for (auto It = PromptStates.CreateIterator(); It; ++It)
-        {
-            UTextBlock* Text = It.Key().Get();
-            if (!Text) { It.RemoveCurrent(); continue; }
-            if (!bUsingGamepad)
-            {
-                if (Text->GetText().EqualTo(It.Value().Applied)) Text->SetText(It.Value().Original);
-                It.RemoveCurrent();
-            }
-        }
+        InlinePrompts.Prune();
         for (auto It = KeyImages.CreateIterator(); It; ++It)
-        {
-            UImage* Image = It.Key().Get();
-            if (!Image) { It.RemoveCurrent(); continue; }
-            if (!bUsingGamepad) { Image->SetRenderOpacity(It.Value()); It.RemoveCurrent(); }
-        }
-        if (!bUsingGamepad) return;
+            if (!It.Key().IsValid()) It.RemoveCurrent();
         TArray<UUserWidget*> Widgets;
         UWidgetBlueprintLibrary::GetAllWidgetsOfClass(World.Get(), Widgets, UUserWidget::StaticClass(), false);
         for (UUserWidget* Widget : Widgets)
@@ -173,68 +265,17 @@ private:
             const bool Interaction = Widget->IsA<UInteractionWidget>();
             const bool Dialogue = Widget->IsA<UDialogueWidget>();
             if (!Tutorial && !Interaction && !Dialogue && !Widget->GetClass()->GetPathName().StartsWith(TEXT("/Game/BluePrint/UI_Widget/"))) continue;
-            Widget->WidgetTree->ForEachWidget([&](UWidget* Child)
+            TArray<UWidget*> Children;
+            Widget->WidgetTree->GetAllWidgets(Children);
+            for (UWidget* Child : Children)
             {
                 if (UImage* Image = Cast<UImage>(Child))
                 {
-                    UObject* Resource = Image->GetBrush().GetResourceObject();
-                    if ((Tutorial || Interaction || Dialogue) && Resource && Resource->GetPathName().StartsWith(TEXT("/Game/ImageResource/UI/Key/")))
-                    {
-                        if (!KeyImages.Contains(Image)) KeyImages.Add(Image, Image->GetRenderOpacity());
-                        Image->SetRenderOpacity(0.f);
-                    }
+                    UpdateKeyImage(Image, Dialogue);
                 }
-                UTextBlock* Text = Cast<UTextBlock>(Child);
-                if (!Text) return;
-                FPromptState* Existing = PromptStates.Find(Text);
-                if (Existing && Text->GetText().EqualTo(Existing->Applied)) return;
-                const FText Original = Text->GetText();
-                FString Value = Original.ToString();
-                const FString Before = Value;
-                // Exact authored instructions only; never substitute letters in item names or dialogue.
-                const TPair<const TCHAR*, const TCHAR*> Replacements[] = {
-                    { TEXT("'E'\ud0a4\ub97c \ub20c\ub7ec \uc778\ubca4\ud1a0\ub9ac \ub2eb\uae30"), TEXT("[B / View] \uc778\ubca4\ud1a0\ub9ac \ub2eb\uae30") },
-                    { TEXT("'X' \ud0a4\ub97c \ub20c\ub7ec \ub098\uac00\uae30"), TEXT("[B] \ub098\uac00\uae30") },
-                    { TEXT("'Enter'\ub85c \uacb0\uc815"), TEXT("[A] \uacb0\uc815") },
-                    { TEXT("\uac15\ud654\ud558\ub824\uba74 \ubb34\uae30\ub97c \uc120\ud0dd \ud6c4 'ENTER' \ud0a4\ub97c \ub204\ub974\uc2dc\uc624"), TEXT("\ubb34\uae30 \uc120\ud0dd \ud6c4 [A] \uac15\ud654") },
-                    { TEXT("\ubb34\uae30 \uc120\ud0dd: \ubc29\ud5a5\ud0a4 \ubc0f 'W', 'S' \ub610\ub294 \ub9c8\uc6b0\uc2a4 \ud074\ub9ad"), TEXT("\ubb34\uae30 \uc120\ud0dd: \ubc29\ud5a5 \ud328\ub4dc / LS") },
-                    { TEXT("\ubc29\ud5a5\ud0a4\ub85c \uc120\ud0dd\uc9c0 \ubcc0\uacbd \ubc0f \uc218\uce58 \ubcc0\uacbd"), TEXT("\ubc29\ud5a5 \ud328\ub4dc / LS: \uc120\ud0dd \ubc0f \uc218\uce58 \ubcc0\uacbd") },
-                    { TEXT("\ubc29\ud5a5\ud0a4\ub85c \uc120\ud0dd\uc9c0 \ubcc0\uacbd"), TEXT("\ubc29\ud5a5 \ud328\ub4dc / LS: \uc120\ud0dd") },
-                    { TEXT("\ubc29\ud5a5\ud0a4\ub85c \uba54\ub274 \ubcc0\uacbd"), TEXT("\ubc29\ud5a5 \ud328\ub4dc / LS: \uba54\ub274 \ubcc0\uacbd") },
-                    { TEXT("Enter\ub85c \ud655\uc815"), TEXT("[A] \ud655\uc815") },
-                    { TEXT("\uc5d4\ud130\ub85c \ud655\uc815"), TEXT("[A] \ud655\uc815") },
-                    { TEXT("WASD\ub97c \uc774\uc6a9\ud574 \uce90\ub9ad\ud130\ub97c \uc774\ub3d9"), TEXT("LS\ub85c \uce90\ub9ad\ud130 \uc774\ub3d9") },
-                    { TEXT("\ub9c8\uc6b0\uc2a4\ub97c \uc774\uc6a9\ud574 \uce74\uba54\ub77c \ud68c\uc804"), TEXT("RS\ub85c \uce74\uba54\ub77c \ud68c\uc804") },
-                    { TEXT("X \ud0a4\ub97c \ub20c\ub7ec \ud3ec\uc158 \uc0ac\uc6a9"), TEXT("[X] \ud3ec\uc158 \uc0ac\uc6a9") },
-                    { TEXT("Z \ud0a4\ub97c \ub20c\ub7ec \ud3ec\uc158 \ubcc0\uacbd"), TEXT("[\ubc29\ud5a5 \ud328\ub4dc \uc544\ub798] \ud3ec\uc158 \ubcc0\uacbd") },
-                };
-                for (const auto& Pair : Replacements) Value.ReplaceInline(Pair.Key, Pair.Value, ESearchCase::CaseSensitive);
-                if (Tutorial)
-                {
-                    const TPair<const TCHAR*, const TCHAR*> Labels[] = {
-                    { TEXT("\ud655\uc778"), TEXT("[A] \ud655\uc778") },
-                    { TEXT("\uad6c\ub974\uae30"), TEXT("[B] \uad6c\ub974\uae30 / \uae38\uac8c \ub20c\ub7ec \ub2ec\ub9ac\uae30") },
-                    { TEXT("\ud3ec\uc158 \uc0ac\uc6a9"), TEXT("[X] \ud3ec\uc158 \uc0ac\uc6a9") },
-                    { TEXT("\ud3ec\uc158 \ubcc0\uacbd"), TEXT("[\ubc29\ud5a5 \ud328\ub4dc \uc544\ub798] \ud3ec\uc158 \ubcc0\uacbd") },
-                    { TEXT("\uae30\ubcf8 \uacf5\uaca9"), TEXT("[RB] \uae30\ubcf8 \uacf5\uaca9") },
-                    { TEXT("\uc778\ubca4\ud1a0\ub9ac"), TEXT("[View] \uc778\ubca4\ud1a0\ub9ac / [A] \uc7a5\ucc29 / [Y] \ud574\uc81c") },
-                    { TEXT("\ubb34\uae30 \ud68d\ub4dd"), TEXT("[Y] \ubb34\uae30 \ud68d\ub4dd") },
-                    { TEXT("\uc0c1\ud638\uc791\uc6a9"), TEXT("[Y] \uc0c1\ud638\uc791\uc6a9") },
-                    { TEXT("\uc2a4\ud0ac \ubc1c\ub3d9"), TEXT("[RT] \uc2a4\ud0ac \ubc1c\ub3d9") },
-                    { TEXT("\uc774\ub3d9"), TEXT("[LS] \uc774\ub3d9") },
-                    { TEXT("\uce74\uba54\ub77c \uc870\uc791"), TEXT("[RS] \uce74\uba54\ub77c \uc870\uc791") },
-                    };
-                    for (const auto& Pair : Labels) if (Value.TrimStartAndEnd() == Pair.Key) { Value = Pair.Value; break; }
-                }
-                if (Interaction && !Value.StartsWith(TEXT("[Y]"))) Value = TEXT("[Y] ") + Value;
-                if (Dialogue && Value == TEXT("\uD655\uC778")) Value = TEXT("[Y] \uB2E4\uC74C");
-                if (Value != Before)
-                {
-                    const FText Applied = FText::FromString(Value);
-                    PromptStates.Add(Text, { Original, Applied });
-                    Text->SetText(Applied);
-                }
-            });
+                if (UTextBlock* Text = Cast<UTextBlock>(Child))
+                    InlinePrompts.Update(Widget, Text, bUsingGamepad);
+            }
         }
     }
 
@@ -264,12 +305,9 @@ void UGamepadSupportSubsystem::Tick(float)
     }
     if (!Hint.IsValid())
     {
-        const TWeakPtr<FGamepadUIProcessor> Weak = Processor;
         Hint = SNew(SBox).HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(20.f)
-            .Visibility_Lambda([Weak]() { auto P = Weak.Pin(); return P && P->bUsingGamepad ? EVisibility::HitTestInvisible : EVisibility::Collapsed; })
-            [SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
-                .ShadowOffset(FVector2D(1.f, 1.f)).ShadowColorAndOpacity(FLinearColor::Black)
-                .Text_Lambda([Weak]() { auto P = Weak.Pin(); return P ? P->HintText() : FText::GetEmpty(); })];
+            .Visibility(EVisibility::HitTestInvisible)
+            [Processor->MakeIconHint()];
         Viewport->AddViewportWidgetContent(Hint.ToSharedRef(), 19000);
     }
 }
@@ -279,4 +317,9 @@ void UGamepadSupportSubsystem::Deinitialize()
     if (Hint.IsValid() && GetWorld()->GetGameViewport()) GetWorld()->GetGameViewport()->RemoveViewportWidgetContent(Hint.ToSharedRef());
     Hint.Reset(); Processor.Reset();
     Super::Deinitialize();
+}
+
+bool UGamepadSupportSubsystem::IsUsingGamepad() const
+{
+    return Processor.IsValid() && Processor->bUsingGamepad;
 }

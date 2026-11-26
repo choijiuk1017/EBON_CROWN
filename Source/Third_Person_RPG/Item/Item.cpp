@@ -26,7 +26,7 @@ AItem::AItem()
 	Trigger->OnComponentBeginOverlap.AddDynamic(this, &AItem::OnOverlapBegin);
 	Trigger->OnComponentEndOverlap.AddDynamic(this, &AItem::OnOverlapEnd);
 
-	HelpText = FText::FromString(TEXT("'F'키를 눌러 획득"));
+	HelpText = FText::FromString(TEXT("획득"));
 }
 
 // Called when the game starts or when spawned

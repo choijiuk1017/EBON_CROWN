@@ -28,6 +28,7 @@ public class Third_Person_RPG : ModuleRules
 		PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry" });
 
         PublicIncludePaths.Add("Third_Person_RPG");
+        RuntimeDependencies.Add("$(ProjectDir)/Content/UI/InputPrompts/...", StagedFileType.NonUFS);
 
         // Uncomment if you are using Slate UI
         // PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

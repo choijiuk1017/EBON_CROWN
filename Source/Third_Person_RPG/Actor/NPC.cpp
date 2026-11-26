@@ -41,7 +41,7 @@ ANPC::ANPC()
 	Trigger->OnComponentEndOverlap.AddDynamic(this, &ANPC::OnOverlapEnd);
 
 
-	HelpText = FText::FromString(TEXT("'F'키를 눌러 대화"));
+	HelpText = FText::FromString(TEXT("대화"));
 
 }
 

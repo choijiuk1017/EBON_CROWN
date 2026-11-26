@@ -17,6 +17,7 @@
 ATPRPlayerController::ATPRPlayerController()
 {
 	bShowMouseCursor = false;
+	bForceFeedbackEnabled = true;
 
 
 }
@@ -199,6 +200,15 @@ void ATPRPlayerController::PlayCombatHitShake(bool bPlayerWasHit)
 	}
 	LastCombatShakeTime = Now;
 	PlayerCameraManager->StartCameraShake(UCombatHitCameraShake::StaticClass(), Scale);
+	// Share the camera shake's hit filtering, so one swing cannot stack rumble per target.
+	if (bCombatForceFeedbackEnabled && bForceFeedbackEnabled)
+	{
+		const float Intensity = FMath::Clamp(bPlayerWasHit ? ReceivedHitRumbleIntensity : AttackHitRumbleIntensity, 0.f, 1.f);
+		const float Duration = FMath::Clamp(bPlayerWasHit ? ReceivedHitRumbleDuration : AttackHitRumbleDuration, 0.f, 0.5f);
+		StopCombatRumble();
+		if (Intensity > 0.f && Duration > 0.f)
+			CombatRumbleHandle = PlayDynamicForceFeedback(Intensity, Duration, true, true, true, true);
+	}
 }
 namespace
 {
@@ -257,6 +267,7 @@ void ATPRPlayerController::PadBReleased()
 void ATPRPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
+	if (IsPaused() || bShowMouseCursor) StopCombatRumble();
 	if (!bPadBDown) return;
 	if (!CanUsePadGameplay())
 	{
@@ -274,5 +285,19 @@ void ATPRPlayerController::FlushPressedKeys()
 {
 	if (bPadSprinting) Input_Sprint_End();
 	bPadBDown = bPadSprinting = false;
+	StopCombatRumble();
 	Super::FlushPressedKeys();
+}
+
+void ATPRPlayerController::StopCombatRumble()
+{
+	if (CombatRumbleHandle != 0)
+		CombatRumbleHandle = PlayDynamicForceFeedback(0.f, 0.f, true, true, true, true,
+			EDynamicForceFeedbackAction::Stop, CombatRumbleHandle);
+}
+
+void ATPRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	StopCombatRumble();
+	Super::EndPlay(EndPlayReason);
 }
