@@ -6,6 +6,7 @@
 #include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "GameFramework/PlayerController.h"
 #include "Third_Person_RPG/TPRSaveGame.h"
 #include "Third_Person_RPG/Instance/TPRGameInstance.h"
 
@@ -111,6 +112,15 @@ void UTitleScreenWidget::ExecuteSelection()
 	GetWorld()->GetTimerManager().SetTimer(TimerHandle,
 		FTimerDelegate::CreateWeakLambda(this, [this, TargetMap]()
 		{
+			// UI-only input belongs to the viewport and can survive world travel.
+			// Restore it here, before destination BeginPlay can start a cutscene/UI.
+			if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
+			{
+				PC->FlushPressedKeys();
+				PC->SetInputMode(FInputModeGameOnly());
+				PC->bShowMouseCursor = false;
+				UE_LOG(LogTemp, Log, TEXT("[TitleTravel] Restored game input before opening %s"), *TargetMap.ToString());
+			}
 			UGameplayStatics::OpenLevel(this, TargetMap);
 		}), 0.1f, false);
 }
