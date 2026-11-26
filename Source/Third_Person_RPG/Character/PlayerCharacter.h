@@ -130,6 +130,8 @@ class THIRD_PERSON_RPG_API APlayerCharacter : public ACharacter, public IAnimati
 public:
 	// Sets default values for this character's properties
 	APlayerCharacter();
+	bool IsDialogueOpen() const;
+	bool IsPadGameplayBlocked() const;
 
 	FOnHPChanged OnHPChanged;
 	FOnFPChanged OnFPChanged;

@@ -311,7 +311,7 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 
 		
 
-		UE_LOG(LogTemp, Error, TEXT("Monster Dead"));
+		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 
 		return;
 	}

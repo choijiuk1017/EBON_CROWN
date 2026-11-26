@@ -128,7 +128,7 @@ void UPlayerSavePointComponent::InteractingSavePoint(UAnimMontage* Montage, bool
 				OwnerPlayer->SavedGlobalTimeDilation =
 					UGameplayStatics::GetGlobalTimeDilation(OwnerPlayer->GetWorld());
 
-				UGameplayStatics::SetGlobalTimeDilation(OwnerPlayer->GetWorld(), 0.0f);
+				UGameplayStatics::SetGlobalTimeDilation(OwnerPlayer->GetWorld(), 0.0001f);
 
 				OwnerPlayer->bPausedBySavePoint = true;
 			}

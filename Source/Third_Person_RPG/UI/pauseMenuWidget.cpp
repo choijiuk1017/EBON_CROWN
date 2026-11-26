@@ -15,20 +15,24 @@ void UpauseMenuWidget::NativeConstruct()
 
 	if (Button_ReturnToTitle)
 	{
-		Button_ReturnToTitle->OnClicked.AddDynamic(this, &UpauseMenuWidget::OnReturnToTitleClicked);
+		Button_ReturnToTitle->OnClicked.AddUniqueDynamic(this, &UpauseMenuWidget::OnReturnToTitleClicked);
 	}
 
 	if (Button_QuitGame)
 	{
-		Button_QuitGame->OnClicked.AddDynamic(this, &UpauseMenuWidget::OnQuitGameClicked);
+		Button_QuitGame->OnClicked.AddUniqueDynamic(this, &UpauseMenuWidget::OnQuitGameClicked);
 	}
 }
 
 void UpauseMenuWidget::Open(APlayerController* InPC)
 {
+	if (!IsValid(InPC) || IsInViewport()) return;
 	OwningPC = InPC;
 
 	AddToViewport(9999);
+	PadSelection = 0;
+	if (Button_ReturnToTitle) Button_ReturnToTitle->SetBackgroundColor(FLinearColor::Yellow);
+	if (Button_QuitGame) Button_QuitGame->SetBackgroundColor(FLinearColor::White);
 
 	if (OwningPC)
 	{
@@ -36,6 +40,7 @@ void UpauseMenuWidget::Open(APlayerController* InPC)
 		OwningPC->bShowMouseCursor = true;
 
 		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(TakeWidget());
 		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		OwningPC->SetInputMode(Mode);
 	}
@@ -46,6 +51,7 @@ void UpauseMenuWidget::Open(APlayerController* InPC)
 
 void UpauseMenuWidget::Close()
 {
+	if (!IsInViewport()) return;
 	RemoveFromParent();
 
 	if (OwningPC)
@@ -58,17 +64,47 @@ void UpauseMenuWidget::Close()
 	}
 }
 
-FReply UpauseMenuWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+FReply UpauseMenuWidget::NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
 {
-	const FKey Key = InKeyEvent.GetKey();
+    // Handle navigation before a focused child button consumes it.
+    const FReply Reply = HandleMenuKey(Event.GetKey(), Event.IsRepeat());
+    return Reply.IsEventHandled() ? Reply : Super::NativeOnPreviewKeyDown(Geometry, Event);
+}
 
-	if (Key == EKeys::Escape)
-	{
-		Close();
-		return FReply::Handled();
-	}
+FReply UpauseMenuWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
+{
+    const FReply Reply = HandleMenuKey(Event.GetKey(), Event.IsRepeat());
+    return Reply.IsEventHandled() ? Reply : Super::NativeOnKeyDown(Geometry, Event);
+}
 
-	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+FReply UpauseMenuWidget::HandleMenuKey(FKey Key, bool bRepeat)
+{
+    if (!IsInViewport()) return FReply::Unhandled();
+    const bool bPrevious = Key == EKeys::Up || Key == EKeys::Left ||
+        Key == EKeys::Gamepad_DPad_Up || Key == EKeys::Gamepad_DPad_Left;
+    const bool bNext = Key == EKeys::Down || Key == EKeys::Right ||
+        Key == EKeys::Gamepad_DPad_Down || Key == EKeys::Gamepad_DPad_Right;
+    if (bPrevious || bNext)
+    {
+        if (!bRepeat) PadSelection = 1 - PadSelection;
+        if (Button_ReturnToTitle) Button_ReturnToTitle->SetBackgroundColor(PadSelection == 0 ? FLinearColor::Yellow : FLinearColor::White);
+        if (Button_QuitGame) Button_QuitGame->SetBackgroundColor(PadSelection == 1 ? FLinearColor::Yellow : FLinearColor::White);
+        return FReply::Handled();
+    }
+    if (Key == EKeys::Enter || Key == EKeys::Gamepad_FaceButton_Bottom)
+    {
+        if (!bRepeat)
+        {
+            if (PadSelection == 0) OnReturnToTitleClicked(); else OnQuitGameClicked();
+        }
+        return FReply::Handled();
+    }
+    if (Key == EKeys::Escape || Key == EKeys::X || Key == EKeys::Gamepad_Special_Right || Key == EKeys::Gamepad_FaceButton_Right)
+    {
+        if (!bRepeat) Close();
+        return FReply::Handled();
+    }
+    return FReply::Unhandled();
 }
 
 void UpauseMenuWidget::OnReturnToTitleClicked()

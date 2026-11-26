@@ -1219,3 +1219,12 @@ void APlayerCharacter::TakeDamage(int32 DamageAmount)
 		StatComponent->TakeDamage(DamageAmount);
 	}
 }
+
+bool APlayerCharacter::IsDialogueOpen() const
+{
+	return DialogueWidgetInstance && DialogueWidgetInstance->IsInViewport();
+}
+bool APlayerCharacter::IsPadGameplayBlocked() const
+{
+	return bIsDead || bChoiceUIOpen || bIsPopupInventory || bIsKneeling || IsDialogueOpen();
+}

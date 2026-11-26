@@ -17,6 +17,7 @@ class THIRD_PERSON_RPG_API UpauseMenuWidget : public UUserWidget
 
 protected:
 	virtual void NativeConstruct() override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 
 	// ESC 입력 받기
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
@@ -37,10 +38,12 @@ public:
 	// 열고/닫기
 	void Open(APlayerController* InPC);
 	void Close();
+	FReply HandleMenuKey(FKey Key, bool bRepeat = false);
 
 private:
 	UPROPERTY()
 	APlayerController* OwningPC = nullptr;
+	int32 PadSelection = 0;
 
 	UPROPERTY(EditAnywhere, Category = "Pause")
 	FName TitleLevelName = TEXT("Start");

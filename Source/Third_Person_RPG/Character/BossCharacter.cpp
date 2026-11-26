@@ -411,7 +411,7 @@ void ABossCharacter::TakeDamage(int32 DamageAmount)
 		MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 		MeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 
-		UE_LOG(LogTemp, Error, TEXT("Monster Dead"));
+		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 
 		return;
 	}

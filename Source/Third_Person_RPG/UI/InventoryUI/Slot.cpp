@@ -123,11 +123,16 @@ void USlot::NativeOnDragDetected(const FGeometry& InGeometry, const FPointerEven
 
 bool USlot::NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation)
 {
+    return InOperation && TryEquipItem(Cast<UInventoryItem>(InOperation->Payload));
+}
+
+bool USlot::TryEquipItem(UInventoryItem* Item)
+{
     if (SlotType != ESlotType::ST_EquipWeapon) return false;
 
-    if (UInventoryItem* DroppedItem = Cast<UInventoryItem>(InOperation->Payload))
+    if (UInventoryItem* DroppedItem = Item)
     {
-        if (DroppedItem->ItemData->ItemType == EItemType::IT_Weapon)
+        if (DroppedItem->ItemData && DroppedItem->ItemData->ItemType == EItemType::IT_Weapon)
         {
             // 무기 데이터 가져오기
             if (UWeaponItemData* WeaponData = Cast<UWeaponItemData>(DroppedItem->ItemData))

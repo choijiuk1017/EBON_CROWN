@@ -55,6 +55,9 @@ public:
     virtual bool NativeOnDrop(const FGeometry& InGeometry, const FDragDropEvent& InDragDropEvent, UDragDropOperation* InOperation) override;
 
     void UnequipItem();
+    bool TryEquipItem(UInventoryItem* Item);
+	UInventoryItem* GetItem() const { return InventoryItem; }
+	void SetPadSelected(bool bSelected) { SetRenderScale(bSelected ? FVector2D(1.08f) : FVector2D(1.f)); SetRenderOpacity(bSelected ? 1.f : 0.65f); }
 
     void RefreshAmountText();
 

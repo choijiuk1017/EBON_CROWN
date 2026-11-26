@@ -19,6 +19,7 @@
 void UInventoryWidget::NativeConstruct()
 {
     Super::NativeConstruct();
+	SetIsFocusable(true);
 
     if (BTN_Equipment)
         BTN_Equipment->OnClicked.AddDynamic(this, &UInventoryWidget::OnClickEquipment);
@@ -39,6 +40,7 @@ void UInventoryWidget::NativeConstruct()
 
 
     Init();
+    RefreshPadSelection();
 
     if (APlayerCharacter* PC = Cast<APlayerCharacter>(GetOwningPlayerPawn()))
     {
@@ -51,18 +53,21 @@ void UInventoryWidget::NativeConstruct()
 
 void UInventoryWidget::OnClickEquipment()
 {
+    PadTab = 0;
     InventorySlotType = ESlotType::ST_InventoryEquipment;
     UpdateInventorySlot();
 }
 
 void UInventoryWidget::OnClickConsumable()
 {
+    PadTab = 1;
     InventorySlotType = ESlotType::ST_InventoryConsumable;
     UpdateInventorySlot();
 }
 
 void UInventoryWidget::OnClickOther()
 {
+    PadTab = 2;
     InventorySlotType = ESlotType::ST_InventoryOther;
     UpdateInventorySlot();
 }
@@ -301,3 +306,56 @@ FString UInventoryWidget::GetWeightStateString(float Current, float Max) const
 
 
 
+
+void UInventoryWidget::RefreshPadSelection()
+{
+	for (int32 i = 0; i < SlotList.Num(); ++i)
+		if (SlotList[i]) SlotList[i]->SetPadSelected(i == PadSlot);
+	if (SlotList.IsValidIndex(PadSlot) && SlotList[PadSlot] && SlotList[PadSlot]->GetItem())
+		if (UWeaponItemData* Data = Cast<UWeaponItemData>(SlotList[PadSlot]->GetItem()->ItemData))
+			UpdateWeaponInfo(Data);
+}
+FReply UInventoryWidget::NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event)
+{
+	const FKey Key = Event.GetKey();
+	if (Key == EKeys::X || Key == EKeys::E)
+	{
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(GetOwningPlayerPawn())) Player->ToggleInventory();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::PageUp || Key == EKeys::PageDown)
+	{
+		PadTab = (PadTab + (Key == EKeys::PageUp ? 2 : 1)) % 3;
+		if (PadTab == 0) OnClickEquipment();
+		else if (PadTab == 1) OnClickConsumable();
+		else OnClickOther();
+		PadSlot = 0;
+		RefreshPadSelection();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Up || Key == EKeys::Down || Key == EKeys::Left || Key == EKeys::Right)
+	{
+		const int32 Step = Key == EKeys::Up ? -5 : Key == EKeys::Down ? 5 : Key == EKeys::Left ? -1 : 1;
+		PadSlot = FMath::Clamp(PadSlot + Step, 0, FMath::Max(0, SlotList.Num() - 1));
+		RefreshPadSelection();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Delete)
+	{
+		if (EquippedWeaponSlot) EquippedWeaponSlot->UnequipItem();
+		UpdateStatPanel();
+		return FReply::Handled();
+	}
+	if (Key == EKeys::Enter)
+	{
+		if (EquippedWeaponSlot && SlotList.IsValidIndex(PadSlot) && SlotList[PadSlot])
+		{
+			// Share requirement validation and equip state with mouse drag-and-drop.
+			EquippedWeaponSlot->TryEquipItem(SlotList[PadSlot]->GetItem());
+			UpdateStatPanel();
+			RefreshPadSelection();
+		}
+		return FReply::Handled();
+	}
+	return Super::NativeOnKeyDown(Geometry, Event);
+}

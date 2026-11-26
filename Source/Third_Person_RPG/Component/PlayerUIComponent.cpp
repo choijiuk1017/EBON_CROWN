@@ -103,7 +103,7 @@ void UPlayerUIComponent::PopUpInventory()
 	if (!OwnerPlayer->bPausedByInventory)
 	{
 		OwnerPlayer->SavedGlobalTimeDilation = UGameplayStatics::GetGlobalTimeDilation(OwnerPlayer->GetWorld());
-		UGameplayStatics::SetGlobalTimeDilation(OwnerPlayer->GetWorld(), 0.0f);
+		UGameplayStatics::SetGlobalTimeDilation(OwnerPlayer->GetWorld(), 0.0001f);
 		OwnerPlayer->bPausedByInventory = true;
 	}
 

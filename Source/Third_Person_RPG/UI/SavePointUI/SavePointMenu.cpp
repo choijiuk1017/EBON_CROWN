@@ -25,7 +25,7 @@ void USavePointMenu::NativeConstruct()
 
 	if (!EntryClass || !VerticalBox_MenuList) return;
 
-	UE_LOG(LogTemp, Error, TEXT("Menu Options Num: %d"), MenuOptions.Num());
+	UE_LOG(LogTemp, Verbose, TEXT("Menu Options Num: %d"), MenuOptions.Num());
 
 	for (int32 i = 0; i < MenuOptions.Num(); ++i)
 	{
@@ -72,6 +72,12 @@ void USavePointMenu::NativeDestruct()
 FReply USavePointMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey PressedKey = InKeyEvent.GetKey();
+	if (PressedKey == EKeys::X)
+	{
+		if (APlayerCharacter* Player = Cast<APlayerCharacter>(GetOwningPlayerPawn()))
+			Player->EndInteractSavePoint();
+		return FReply::Handled();
+	}
 	UE_LOG(LogTemp, Warning, TEXT("Pressed Key: %s"), *PressedKey.ToString());
 
 	if (PressedKey == EKeys::W || PressedKey == EKeys::Up)

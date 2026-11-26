@@ -27,6 +27,8 @@ class THIRD_PERSON_RPG_API ATPRPlayerController : public APlayerController
 
 public:
 	void PlayCombatHitShake(bool bPlayerWasHit);
+	virtual void PlayerTick(float DeltaTime) override;
+	virtual void FlushPressedKeys() override;
 
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera Shake", meta = (ClampMin = "0.0", ClampMax = "3.0"))
@@ -81,6 +83,17 @@ protected:
 	TObjectPtr<UInputAction> IA_ESC;
 
 private:
+	bool bPadBDown = false;
+	bool bPadSprinting = false;
+	double PadBStart = 0.0;
+	bool CanUsePadGameplay() const;
+	void PadBPressed();
+	void PadBReleased();
+	void PadInteract();
+	void PadMoveForward(float Value);
+	void PadMoveRight(float Value);
+	void PadLookYaw(float Value);
+	void PadLookPitch(float Value);
 	double LastCombatShakeTime = -1.0;
 	double LastReceivedShakeTime = -1.0;
 	UPROPERTY()

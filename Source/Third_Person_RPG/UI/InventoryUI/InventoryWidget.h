@@ -20,6 +20,7 @@ class THIRD_PERSON_RPG_API UInventoryWidget : public UCustomWidget
 
 protected:
     virtual void NativeConstruct() override;
+	virtual FReply NativeOnKeyDown(const FGeometry& Geometry, const FKeyEvent& Event) override;
 
 public:
     void Init();
@@ -32,7 +33,10 @@ public:
     void UpdateWeaponInfo(UWeaponItemData* WeaponData);
 
 private:
-    void CreateSlots(int32 NumSlots = 30);
+    int32 PadSlot = 0;
+	int32 PadTab = 0;
+	void RefreshPadSelection();
+	void CreateSlots(int32 NumSlots = 30);
 
     // 슬롯 그리드 컨테이너
     UPROPERTY(meta = (BindWidget))

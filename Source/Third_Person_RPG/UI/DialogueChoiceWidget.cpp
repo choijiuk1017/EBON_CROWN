@@ -41,6 +41,11 @@ void UDialogueChoiceWidget::SetSelectedIndex(int32 Index)
 FReply UDialogueChoiceWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();
+	if (Key == EKeys::X)
+	{
+		OnChoiceConfirmed.Broadcast(false);
+		return FReply::Handled();
+	}
 
 	if (Key == EKeys::Left)
 	{
