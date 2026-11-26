@@ -25,7 +25,15 @@ class THIRD_PERSON_RPG_API ATPRPlayerController : public APlayerController
 	ATPRPlayerController();
 
 
+public:
+	void PlayCombatHitShake(bool bPlayerWasHit);
+
 protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera Shake", meta = (ClampMin = "0.0", ClampMax = "3.0"))
+	float AttackHitShakeScale = 0.65f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Camera Shake", meta = (ClampMin = "0.0", ClampMax = "3.0"))
+	float ReceivedHitShakeScale = 1.0f;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void BeginPlay() override;
 	virtual void SetupInputComponent() override;
@@ -73,6 +81,8 @@ protected:
 	TObjectPtr<UInputAction> IA_ESC;
 
 private:
+	double LastCombatShakeTime = -1.0;
+	double LastReceivedShakeTime = -1.0;
 	UPROPERTY()
 	APlayerCharacter* CachedCharacter;
 

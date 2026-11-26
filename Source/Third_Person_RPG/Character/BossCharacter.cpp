@@ -6,6 +6,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
+#include "Third_Person_RPG/Character/TPRPlayerController.h"
 #include "Third_Person_RPG/Data/SkillData.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -383,12 +384,20 @@ void ABossCharacter::GrantCurrencyToKiller()
 
 void ABossCharacter::TakeDamage(int32 DamageAmount)
 {
+	const bool bWasAlive = !bIsDead && BossStats.CurrentHP > 0;
 	int32 Defense = BossStats.Defense;
 
 	float DamageMultiplier = 100.f / (100.f + static_cast<float>(Defense));
 	float FinalDamage = DamageAmount * DamageMultiplier;
 
 	BossStats.CurrentHP -= FinalDamage;
+	if (bWasAlive && FinalDamage > 0.f && LastAttacker.IsValid())
+	{
+		if (ATPRPlayerController* PC = Cast<ATPRPlayerController>(LastAttacker->GetController()))
+		{
+			PC->PlayCombatHitShake(false);
+		}
+	}
 
 	CurrentGroggy += 25;
 

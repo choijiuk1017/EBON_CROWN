@@ -3,6 +3,8 @@
 
 #include "Third_Person_RPG/Character/TPRPlayerController.h"
 
+#include "Camera/PlayerCameraManager.h"
+#include "Third_Person_RPG/Camera/CombatHitCameraShake.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -163,4 +165,23 @@ void ATPRPlayerController::Input_ESC()
 {
 	if (!CachedCharacter) return;
 	if (CachedCharacter && !CachedCharacter->bIsDead) CachedCharacter->TogglePauseMenu();
+}
+void ATPRPlayerController::PlayCombatHitShake(bool bPlayerWasHit)
+{
+	if (!IsLocalController() || !PlayerCameraManager || !GetWorld()) return;
+	const float Scale = bPlayerWasHit ? ReceivedHitShakeScale : AttackHitShakeScale;
+	if (Scale <= 0.f) return;
+	const double Now = GetWorld()->GetTimeSeconds();
+	// Multiple enemies hit in one swing produce one impulse; receiving damage has priority.
+	if (bPlayerWasHit)
+	{
+		if (Now - LastReceivedShakeTime < 0.06) return;
+		LastReceivedShakeTime = Now;
+	}
+	else if (Now - LastCombatShakeTime < 0.06 || Now - LastReceivedShakeTime < 0.14)
+	{
+		return;
+	}
+	LastCombatShakeTime = Now;
+	PlayerCameraManager->StartCameraShake(UCombatHitCameraShake::StaticClass(), Scale);
 }

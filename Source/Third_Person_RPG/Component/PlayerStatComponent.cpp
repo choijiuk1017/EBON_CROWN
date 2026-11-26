@@ -185,6 +185,10 @@ void UPlayerStatComponent::TakeDamage(int32 DamageAmount)
 		OwnerPlayer->DerivedStats.MaxHP
 	);
 
+	if (ATPRPlayerController* PC = Cast<ATPRPlayerController>(OwnerPlayer->GetController()))
+	{
+		PC->PlayCombatHitShake(true);
+	}
 	if (OwnerPlayer->CombatStats.CurrentHP <= 0)
 	{
 		OwnerPlayer->CombatStats.CurrentHP = 0;
