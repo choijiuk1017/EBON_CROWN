@@ -114,6 +114,10 @@ void FInlineInputPrompts::Update(UUserWidget* Owner, UTextBlock* Text, bool bGam
     const bool bMenu = Owner->IsA<ULevelUpMenu>() || Owner->IsA<UWorldTravelMenu>() ||
         Owner->IsA<USavePointMenu>() || Owner->IsA<UWeaponUpgradeWidget>() ||
         Owner->IsA<UInventoryWidget>() || Owner->IsA<UTitleScreenWidget>() || Owner->IsA<UpauseMenuWidget>();
+    if (Keyboard.IsEmpty() && Owner->IsA<UWeaponUpgradeWidget>() && Source == TEXT("\uac15\ud654"))
+    {
+        Keyboard = TEXT("keyboard_enter"); Pad = TEXT("xbox_button_color_a"); Label = Source;
+    }
     if (Keyboard.IsEmpty() && bMenu)
     {
         if (Source == TEXT("\ubcc0\uacbd") || Source == TEXT("\uc120\ud0dd") || Source == TEXT("\uc218\uce58 \ubcc0\uacbd"))

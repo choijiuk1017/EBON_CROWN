@@ -6,7 +6,9 @@ const FSlateBrush* FInputPromptIcons::Get(const FString& Name)
 {
     if (const TSharedPtr<FSlateBrush>* Found = Brushes.Find(Name)) return Found->Get();
     const FString Path = FPaths::Combine(FPaths::ProjectContentDir(), TEXT("UI/InputPrompts"), Name + TEXT(".png"));
-    UTexture2D* Texture = FImageUtils::ImportFileAsTexture2D(Path);
+    const FString AssetPath = FString::Printf(TEXT("/Game/UI/InputPrompts/%s.%s"), *Name, *Name);
+    UTexture2D* Texture = LoadObject<UTexture2D>(nullptr, *AssetPath, nullptr, LOAD_NoWarn);
+    if (!Texture) Texture = FImageUtils::ImportFileAsTexture2D(Path);
     if (!Texture)
     {
         UE_LOG(LogTemp, Warning, TEXT("Input prompt icon unavailable: %s"), *Name);

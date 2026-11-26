@@ -21,6 +21,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
+#include "Components/Border.h"
 #include "UI/InteractionWidget.h"
 #include "UI/DialogueWidget.h"
 #include "UI/InputPromptIcons.h"
@@ -130,43 +131,39 @@ public:
         }
         HeldDirection = Direction;
     }
-    FText HintText() const
-    {
-        if (UUserWidget* Menu = FindMenu())
-        {
-            if (Menu->IsA<UInventoryWidget>()) return FText::FromString(TEXT("D-pad: Select   A: Equip   Y: Unequip   LB/RB: Tab   B: Close"));
-            if (Menu->IsA<UTutorialWidget>()) return FText::FromString(TEXT("A: Continue"));
-            if (Menu->IsA<UTitleScreenWidget>()) return FText::FromString(TEXT("D-pad / LS: Navigate   A: Confirm"));
-            return FText::FromString(TEXT("D-pad / LS: Navigate   A: Confirm   B: Back"));
-        }
-        return FText::FromString(TEXT("Y: Interact / Talk   RB: Attack   RT: Skill   B: Roll / Hold to sprint   X: Potion   View: Inventory"));
-    }
 private:
 
     FInlineInputPrompts InlinePrompts;
-    struct FKeyImageState { FString OriginalName; FString AppliedIcon; };
-    TMap<TWeakObjectPtr<UImage>, FKeyImageState> KeyImages;
+    struct FKeyImageState { FString OriginalName; TWeakObjectPtr<UObject> AppliedResource; FString AppliedIcon; };
+    TMap<TWeakObjectPtr<UWidget>, FKeyImageState> KeyImages;
     FInputPromptIcons Icons;
     TSharedPtr<SHorizontalBox> IconHint;
     FString HintContext;
     bool bHintWasGamepad = false;
-    void UpdateKeyImage(UImage* Image, bool bDialogue)
+    void UpdateKeyImage(UWidget* Image, const FSlateBrush& CurrentBrush, const UUserWidget* Owner)
     {
         FKeyImageState* State = KeyImages.Find(Image);
-        UObject* Resource = Image->GetBrush().GetResourceObject();
-        if (!State)
+        UObject* Resource = CurrentBrush.GetResourceObject();
+        if (!State || State->AppliedResource.Get() != Resource)
         {
-            if (!Resource) return;
+            if (!Resource) { KeyImages.Remove(Image); return; }
             const FString Path = Resource->GetPathName();
             if (!Path.StartsWith(TEXT("/Game/ImageResource/UI/Key/")) &&
-                !Path.StartsWith(TEXT("/Game/UI/InputPrompts/"))) return;
-            State = &KeyImages.Add(Image, { Resource->GetName(), FString() });
+                !Path.StartsWith(TEXT("/Game/UI/InputPrompts/")))
+            {
+                KeyImages.Remove(Image);
+                return;
+            }
+            State = &KeyImages.Add(Image, { Resource->GetName(), Resource, FString() });
         }
         struct FMapping { const TCHAR* Original; const TCHAR* Keyboard; const TCHAR* Pad; };
         static const FMapping Mapping[] = {
             { TEXT("keyboard_arrows"), TEXT("keyboard_arrows"), TEXT("xbox_dpad") },
             { TEXT("keyboard_escape"), TEXT("keyboard_escape"), TEXT("xbox_button_color_b") },
             { TEXT("keyboard_space"), TEXT("keyboard_space"), TEXT("xbox_button_menu") },
+            { TEXT("keyboard_delete"), TEXT("keyboard_delete"), TEXT("xbox_button_color_y") },
+            { TEXT("keyboard_page_up"), TEXT("keyboard_page_up"), TEXT("xbox_lb") },
+            { TEXT("keyboard_page_down"), TEXT("keyboard_page_down"), TEXT("xbox_rb") },
             { TEXT("Interaction_F_Key"), TEXT("keyboard_f"), TEXT("xbox_button_color_y") },
             { TEXT("Tutorial_Enter_Key"), TEXT("keyboard_enter"), TEXT("xbox_button_color_a") },
             { TEXT("Tutorial_Mouse_Active"), TEXT("mouse_left"), TEXT("xbox_rb") },
@@ -185,13 +182,20 @@ private:
         {
             if (State->OriginalName != Entry.Original && State->OriginalName != Entry.Keyboard) continue;
             FString Icon = bUsingGamepad ? Entry.Pad : Entry.Keyboard;
-            if (bUsingGamepad && bDialogue && FCString::Strcmp(Entry.Keyboard, TEXT("keyboard_enter")) == 0) Icon = TEXT("xbox_button_color_y");
+            if (FCString::Strcmp(Entry.Keyboard, TEXT("keyboard_enter")) == 0 && Owner->IsA<UDialogueWidget>())
+                Icon = bUsingGamepad ? TEXT("xbox_button_color_y") : TEXT("keyboard_f");
+            if (bUsingGamepad && Owner->IsA<UInventoryWidget>() && FCString::Strcmp(Entry.Keyboard, TEXT("keyboard_e")) == 0)
+                Icon = TEXT("xbox_button_color_b");
             if (State->AppliedIcon == Icon) return;
             if (const FSlateBrush* Brush = Icons.Get(Icon))
             {
-                FSlateBrush Replacement = *Brush;
-                Replacement.ImageSize = Image->GetBrush().ImageSize;
-                Image->SetBrush(Replacement);
+                FSlateBrush Replacement = CurrentBrush;
+                Replacement.SetResourceObject(Brush->GetResourceObject());
+                if (UImage* IconImage = Cast<UImage>(Image))
+                    IconImage->SetBrush(Replacement);
+                else if (UBorder* IconBorder = Cast<UBorder>(Image))
+                    IconBorder->SetBrush(Replacement);
+                State->AppliedResource = Replacement.GetResourceObject();
                 State->AppliedIcon = Icon;
             }
             return;
@@ -244,6 +248,7 @@ private:
         Add(TEXT("keyboard_q"), TEXT("xbox_rt"), TEXT("\uc2a4\ud0ac"));
         Add(TEXT("keyboard_c"), TEXT("xbox_button_color_b"), TEXT("\uad6c\ub974\uae30"));
         Add(TEXT("keyboard_x"), TEXT("xbox_button_color_x"), TEXT("\ud3ec\uc158"));
+        Add(TEXT("keyboard_z"), TEXT("xbox_dpad_down"), TEXT("\ud3ec\uc158 \ubcc0\uacbd"));
         Add(TEXT("keyboard_e"), TEXT("xbox_button_view"), TEXT("\uc778\ubca4\ud1a0\ub9ac"));
     }
 
@@ -271,8 +276,10 @@ private:
             {
                 if (UImage* Image = Cast<UImage>(Child))
                 {
-                    UpdateKeyImage(Image, Dialogue);
+                    UpdateKeyImage(Image, Image->GetBrush(), Widget);
                 }
+                else if (UBorder* Border = Cast<UBorder>(Child))
+                    UpdateKeyImage(Border, Border->Background, Widget);
                 if (UTextBlock* Text = Cast<UTextBlock>(Child))
                     InlinePrompts.Update(Widget, Text, bUsingGamepad);
             }
