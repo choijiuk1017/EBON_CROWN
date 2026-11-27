@@ -127,6 +127,7 @@ protected:
 private:
 	FTimerHandle HitReactTimerHandle;
 
+	void EnsureHPBar();
 	FTimerHandle HideHPBarTimerHandle;
 
 	UFUNCTION()

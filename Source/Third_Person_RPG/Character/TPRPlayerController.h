@@ -26,6 +26,7 @@ class THIRD_PERSON_RPG_API ATPRPlayerController : public APlayerController
 
 
 public:
+	void PulseRumble(float Intensity, float Duration);
 	void PlayCombatHitShake(bool bPlayerWasHit);
 	virtual void PlayerTick(float DeltaTime) override;
 	virtual void FlushPressedKeys() override;
@@ -101,6 +102,11 @@ protected:
 private:
 	FDynamicForceFeedbackHandle CombatRumbleHandle = 0;
 	void StopCombatRumble();
+	TWeakObjectPtr<ACharacter> LockTarget;
+	float OcclusionTime = 0.f;
+	void ToggleLockOn();
+	void TrackLockTarget(float DeltaTime);
+	void DrawLockMarker(class AHUD* HUD, class UCanvas* Canvas);
 	bool bPadBDown = false;
 	bool bPadSprinting = false;
 	double PadBStart = 0.0;

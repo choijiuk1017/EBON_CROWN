@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintLibrary.h"
+#include "Instance/CutsceneSkipSubsystem.h"
 #include "Animation/SkeletalMeshActor.h"
 #include "Engine/StaticMeshActor.h"
 #include "LevelSequenceActor.h"
@@ -290,9 +291,10 @@ void ABossSequenceTrigger::SetAllUIVisible(bool bVisible)
 	TArray<UUserWidget*> AllWidgets;
 	UWidgetBlueprintLibrary::GetAllWidgetsOfClass(GetWorld(), AllWidgets, UUserWidget::StaticClass(), false);
 
+	const auto* Skip = GetWorld()->GetSubsystem<UCutsceneSkipSubsystem>();
 	for (UUserWidget* Widget : AllWidgets)
 	{
-		if (Widget)
+		if (Widget && !(Skip && Skip->IsSkipHint(Widget)))
 		{
 			Widget->SetVisibility(bVisible ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
 		}

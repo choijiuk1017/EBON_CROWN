@@ -100,6 +100,7 @@ public:
 	}
 
 	void RegisterPlayerStatFromPlayer(const APlayerCharacter* Player);
+	void CachePlayerForTravel(APlayerCharacter* Player);
 	void ApplyLoadedPlayerStatTo(APlayerCharacter* Player);
 
 	UPROPERTY()

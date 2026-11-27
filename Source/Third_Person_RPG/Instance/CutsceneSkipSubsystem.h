@@ -19,8 +19,13 @@ public:
     virtual TStatId GetStatId() const override;
     virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const override;
     bool RequestSkip();
+    bool IsSkipHint(const UUserWidget* Widget) const { return Hint == Widget; }
 private:
     void RemoveHint();
+    void CacheShakeSections(ULevelSequencePlayer& Player);
+    void PlayShakeRumble(ULevelSequencePlayer& Player);
+    TMultiMap<FGuid, TWeakObjectPtr<class UMovieSceneCameraShakeSection>> ShakeSections;
+    double LastPulseTime = -1.0;
     TWeakObjectPtr<ULevelSequencePlayer> ActivePlayer;
     TWeakObjectPtr<ULevelSequencePlayer> PendingSkip;
     TSharedPtr<IInputProcessor> InputProcessor;

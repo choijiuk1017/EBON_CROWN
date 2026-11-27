@@ -56,12 +56,7 @@ void UTPRGameInstance::SaveGameData()
 	// Capture current state immediately before writing the save.
 	if (APlayerCharacter* Player = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerPawn(this, 0)))
 	{
-		if (UInventoryComponent* Inventory = Player->GetInventoryComponent())
-		{
-			CacheInventory(Inventory->GetAllItems());
-			CacheEquippedWeapon(Inventory->EquippedWeaponItem);
-		}
-		RegisterPlayerStatFromPlayer(Player);
+		CachePlayerForTravel(Player);
 	}
 	UTPRSaveGame* SaveGameInstance = Cast<UTPRSaveGame>(UGameplayStatics::CreateSaveGameObject(UTPRSaveGame::StaticClass()));
 
@@ -259,6 +254,17 @@ void UTPRGameInstance::CacheInventory(const TArray<UInventoryItem*>& Items)
 const TArray<FInventoryItemSaveData>& UTPRGameInstance::GetCachedInventory() const
 {
 	return CachedInventoryItems;
+}
+
+void UTPRGameInstance::CachePlayerForTravel(APlayerCharacter* Player)
+{
+	if (!Player) return;
+	if (UInventoryComponent* Inventory = Player->GetInventoryComponent())
+	{
+		CacheInventory(Inventory->GetAllItems());
+		CacheEquippedWeapon(Inventory->EquippedWeaponItem);
+	}
+	RegisterPlayerStatFromPlayer(Player);
 }
 
 void UTPRGameInstance::RegisterPlayerStatFromPlayer(const APlayerCharacter* Player)

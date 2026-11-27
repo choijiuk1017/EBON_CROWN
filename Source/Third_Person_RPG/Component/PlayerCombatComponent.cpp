@@ -1,6 +1,7 @@
 // PlayerCombatComponent.cpp
 
 #include "PlayerCombatComponent.h"
+#include "Character/TPRPlayerController.h"
 
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Third_Person_RPG/Character/EnemyCharacter.h"
@@ -181,7 +182,7 @@ void UPlayerCombatComponent::ComboEnd(UAnimMontage* Montage, bool bInterrupted)
 
 void UPlayerCombatComponent::ComboCheck()
 {
-	if (!OwnerPlayer) return;
+	if (!OwnerPlayer || OwnerPlayer->bIsRoll) return;
 
 	OwnerPlayer->ComboTimerHandle.Invalidate();
 
@@ -262,7 +263,7 @@ void UPlayerCombatComponent::SetComboTimer()
 
 void UPlayerCombatComponent::BaseAttackCheck()
 {
-	if (!OwnerPlayer) return;
+	if (!OwnerPlayer || OwnerPlayer->bIsRoll) return;
 	if (OwnerPlayer->CurrentWeapon != nullptr) return;
 	if (!OwnerPlayer->BasicComboData) return;
 
@@ -348,6 +349,8 @@ void UPlayerCombatComponent::SkillStart()
 	const int32 FPCost = OwnerPlayer->bSkillConsumesFP ? OwnerPlayer->GetCurrentSkillFPCost() : 0;
 	if (!OwnerPlayer->HasStamina(OwnerPlayer->StaminaCost_Skill) || !OwnerPlayer->HasFP(FPCost)) return;
 	if (Anim->Montage_Play(Data->SkillMontage, Data->SkillPlayRate) <= 0.f) return;
+	if (ATPRPlayerController* PC = Cast<ATPRPlayerController>(OwnerPlayer->GetController()))
+		PC->PulseRumble(0.35f, 0.07f);
 	OwnerPlayer->ConsumeStamina(OwnerPlayer->StaminaCost_Skill);
 	if (FPCost > 0) OwnerPlayer->ConsumeFP(FPCost);
 	OwnerPlayer->bIsSkillActing = true;
@@ -370,7 +373,7 @@ void UPlayerCombatComponent::SkillEnd(UAnimMontage* Montage, bool bInterrupted)
 
 void UPlayerCombatComponent::SpawnSkillEffect()
 {
-	if (!OwnerPlayer || !OwnerPlayer->SkillData || !OwnerPlayer->SkillData->SkillEffect)
+	if (!OwnerPlayer || OwnerPlayer->bIsRoll || !OwnerPlayer->SkillData || !OwnerPlayer->SkillData->SkillEffect)
 	{
 		return;
 	}
@@ -434,7 +437,10 @@ void UPlayerCombatComponent::SpawnSkillEffect()
 
 void UPlayerCombatComponent::SkillAttackCheck()
 {
-	if (!OwnerPlayer || !OwnerPlayer->SkillData) return;
+	if (!OwnerPlayer || OwnerPlayer->bIsRoll || !OwnerPlayer->SkillData) return;
+
+	if (ATPRPlayerController* PC = Cast<ATPRPlayerController>(OwnerPlayer->GetController()))
+		PC->PulseRumble(0.85f, 0.16f);
 
 	SpawnSkillEffect();
 
@@ -527,7 +533,7 @@ void UPlayerCombatComponent::SkillAttackCheck()
 
 void UPlayerCombatComponent::EnableWeaponHitBox()
 {
-	if (OwnerPlayer && OwnerPlayer->CurrentWeapon)
+	if (OwnerPlayer && !OwnerPlayer->bIsRoll && OwnerPlayer->CurrentWeapon)
 	{
 		OwnerPlayer->CurrentWeapon->EnableHitBox();
 	}

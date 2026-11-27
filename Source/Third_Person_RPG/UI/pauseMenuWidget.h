@@ -45,6 +45,5 @@ private:
 	APlayerController* OwningPC = nullptr;
 	int32 PadSelection = 0;
 
-	UPROPERTY(EditAnywhere, Category = "Pause")
-	FName TitleLevelName = TEXT("Start");
+
 };

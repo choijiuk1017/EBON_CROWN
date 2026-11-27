@@ -72,7 +72,6 @@ void UPlayerSavePointComponent::InteractingSavePoint(UAnimMontage* Montage, bool
 	{
 		GI->RegisterSavePoint(OwnerPlayer->OverlappingSavePoint->SavePointInfo);
 		GI->LastRestedSavePointID = OwnerPlayer->OverlappingSavePoint->SavePointInfo.SavePointID;
-		GI->SaveGameData();
 	}
 
 	OwnerPlayer->GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
@@ -83,6 +82,8 @@ void UPlayerSavePointComponent::InteractingSavePoint(UAnimMontage* Montage, bool
 	OwnerPlayer->CombatStats.CurrentHP = OwnerPlayer->DerivedStats.MaxHP;
 	OwnerPlayer->CombatStats.CurrentFP = OwnerPlayer->DerivedStats.MaxFP;
 	OwnerPlayer->CombatStats.CurrentStamina = OwnerPlayer->DerivedStats.MaxStamina;
+
+	if (GI) GI->SaveGameData();
 
 	OwnerPlayer->OnHPChanged.Broadcast(
 		OwnerPlayer->CombatStats.CurrentHP,

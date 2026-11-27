@@ -4,6 +4,12 @@
 #include "Third_Person_RPG/Character/TPRPlayerController.h"
 
 #include "Camera/PlayerCameraManager.h"
+#include "Character/EnemyCharacter.h"
+#include "Character/BossCharacter.h"
+#include "GameFramework/HUD.h"
+#include "Engine/Canvas.h"
+#include "EngineUtils.h"
+#include "Components/CapsuleComponent.h"
 #include "Third_Person_RPG/Camera/CombatHitCameraShake.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -25,6 +31,7 @@ ATPRPlayerController::ATPRPlayerController()
 void ATPRPlayerController::BeginPlay()
 {
 	Super::BeginPlay();
+	if (IsLocalController()) AHUD::OnHUDPostRender.AddUObject(this, &ATPRPlayerController::DrawLockMarker);
 
 	CachedCharacter = Cast<APlayerCharacter>(GetPawn());
 
@@ -41,6 +48,7 @@ void ATPRPlayerController::BeginPlay()
 void ATPRPlayerController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+	LockTarget.Reset();
 	CachedCharacter = Cast<APlayerCharacter>(InPawn);
 }
 
@@ -50,6 +58,8 @@ void ATPRPlayerController::SetupInputComponent()
 	Super::SetupInputComponent();
 
 	UEnhancedInputComponent* EIC = CastChecked<UEnhancedInputComponent>(InputComponent);
+	InputComponent->BindKey(EKeys::MiddleMouseButton, IE_Pressed, this, &ATPRPlayerController::ToggleLockOn);
+	InputComponent->BindKey(EKeys::Gamepad_RightThumbstick, IE_Pressed, this, &ATPRPlayerController::ToggleLockOn);
 	InputComponent->BindAxisKey(EKeys::Gamepad_LeftY, this, &ATPRPlayerController::PadMoveForward);
 	InputComponent->BindAxisKey(EKeys::Gamepad_LeftX, this, &ATPRPlayerController::PadMoveRight);
 	InputComponent->BindAxisKey(EKeys::Gamepad_RightX, this, &ATPRPlayerController::PadLookYaw);
@@ -97,6 +107,7 @@ void ATPRPlayerController::Input_Move(const FInputActionValue& Value)
 
 void ATPRPlayerController::Input_Look(const FInputActionValue& Value)
 {
+	if (LockTarget.IsValid()) return;
 	const FVector2D Look = Value.Get<FVector2D>();
 	AddYawInput(Look.X);
 	AddPitchInput(Look.Y);
@@ -201,15 +212,18 @@ void ATPRPlayerController::PlayCombatHitShake(bool bPlayerWasHit)
 	LastCombatShakeTime = Now;
 	PlayerCameraManager->StartCameraShake(UCombatHitCameraShake::StaticClass(), Scale);
 	// Share the camera shake's hit filtering, so one swing cannot stack rumble per target.
-	if (bCombatForceFeedbackEnabled && bForceFeedbackEnabled)
-	{
-		const float Intensity = FMath::Clamp(bPlayerWasHit ? ReceivedHitRumbleIntensity : AttackHitRumbleIntensity, 0.f, 1.f);
-		const float Duration = FMath::Clamp(bPlayerWasHit ? ReceivedHitRumbleDuration : AttackHitRumbleDuration, 0.f, 0.5f);
-		StopCombatRumble();
-		if (Intensity > 0.f && Duration > 0.f)
-			CombatRumbleHandle = PlayDynamicForceFeedback(Intensity, Duration, true, true, true, true);
-	}
+	PulseRumble(bPlayerWasHit ? ReceivedHitRumbleIntensity : AttackHitRumbleIntensity,
+		bPlayerWasHit ? ReceivedHitRumbleDuration : AttackHitRumbleDuration);
 }
+
+void ATPRPlayerController::PulseRumble(float Intensity, float Duration)
+{
+	if (!IsLocalController() || !bCombatForceFeedbackEnabled || !bForceFeedbackEnabled || IsPaused()) return;
+	StopCombatRumble();
+	if (Intensity > 0.f && Duration > 0.f)
+		CombatRumbleHandle = PlayDynamicForceFeedback(FMath::Clamp(Intensity, 0.f, 1.f), Duration, true, true, true, true);
+}
+
 namespace
 {
 	float PadAxis(float Value)
@@ -234,12 +248,12 @@ void ATPRPlayerController::PadMoveRight(float Value)
 }
 void ATPRPlayerController::PadLookYaw(float Value)
 {
-	if (CanUsePadGameplay() && !IsLookInputIgnored())
+	if (CanUsePadGameplay() && !LockTarget.IsValid() && !IsLookInputIgnored())
 		AddYawInput(PadAxis(Value) * 120.f * GetWorld()->GetDeltaSeconds());
 }
 void ATPRPlayerController::PadLookPitch(float Value)
 {
-	if (CanUsePadGameplay() && !IsLookInputIgnored())
+	if (CanUsePadGameplay() && !LockTarget.IsValid() && !IsLookInputIgnored())
 		AddPitchInput(-PadAxis(Value) * 90.f * GetWorld()->GetDeltaSeconds());
 }
 void ATPRPlayerController::PadInteract()
@@ -267,6 +281,7 @@ void ATPRPlayerController::PadBReleased()
 void ATPRPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
+	if (LockTarget.IsValid()) TrackLockTarget(DeltaTime);
 	if (IsPaused() || bShowMouseCursor) StopCombatRumble();
 	if (!bPadBDown) return;
 	if (!CanUsePadGameplay())
@@ -299,5 +314,74 @@ void ATPRPlayerController::StopCombatRumble()
 void ATPRPlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	StopCombatRumble();
+	AHUD::OnHUDPostRender.RemoveAll(this);
 	Super::EndPlay(EndPlayReason);
+}
+
+namespace
+{
+	bool IsLivingEnemy(const ACharacter* Target)
+	{
+		if (!IsValid(Target) || Target->IsHidden()) return false;
+		if (const auto* Enemy = Cast<AEnemyCharacter>(Target)) return !Enemy->bIsDead;
+		if (const auto* Boss = Cast<ABossCharacter>(Target)) return !Boss->bIsDead;
+		return false;
+	}
+
+	FVector LockPoint(const ACharacter* Target)
+	{
+		return Target->GetActorLocation() + FVector::UpVector * Target->GetCapsuleComponent()->GetScaledCapsuleHalfHeight() * 0.45f;
+	}
+}
+
+void ATPRPlayerController::ToggleLockOn()
+{
+	if (LockTarget.IsValid()) { LockTarget.Reset(); return; }
+	if (!CanUsePadGameplay() || !PlayerCameraManager) return;
+	FVector Eye;
+	FRotator View;
+	GetPlayerViewPoint(Eye, View);
+	float Best = -1.f;
+	for (TActorIterator<ACharacter> It(GetWorld()); It; ++It)
+	{
+		ACharacter* Candidate = *It;
+		if (!IsLivingEnemy(Candidate)) continue;
+		const float Range = FVector::Dist(GetPawn()->GetActorLocation(), Candidate->GetActorLocation());
+		const float Facing = FVector::DotProduct(View.Vector(), (LockPoint(Candidate) - Eye).GetSafeNormal());
+		if (Range > 1800.f || Facing < 0.55f) continue;
+		const float Score = Facing - 0.3f * Range / 1800.f;
+		if (Score > Best && LineOfSightTo(Candidate, Eye))
+		{
+			LockTarget = Candidate;
+			Best = Score;
+		}
+	}
+	OcclusionTime = 0.f;
+}
+
+void ATPRPlayerController::TrackLockTarget(float DeltaTime)
+{
+	ACharacter* Target = LockTarget.Get();
+	if (!CanUsePadGameplay() || !IsLivingEnemy(Target) || GetViewTarget() != GetPawn() ||
+		FVector::DistSquared(GetPawn()->GetActorLocation(), Target->GetActorLocation()) > FMath::Square(2400.f))
+	{
+		LockTarget.Reset();
+		return;
+	}
+	FVector Eye;
+	FRotator View;
+	GetPlayerViewPoint(Eye, View);
+	OcclusionTime = LineOfSightTo(Target, Eye) ? 0.f : OcclusionTime + DeltaTime;
+	if (OcclusionTime > 0.6f) { LockTarget.Reset(); return; }
+	const FRotator Aim = (LockPoint(Target) - Eye).Rotation();
+	SetControlRotation(FMath::RInterpTo(GetControlRotation(), Aim, DeltaTime, 10.f));
+}
+
+void ATPRPlayerController::DrawLockMarker(AHUD* HUD, UCanvas* Canvas)
+{
+	if (!HUD || HUD != GetHUD() || !LockTarget.IsValid()) return;
+	FVector2D Point;
+	if (!ProjectWorldLocationToScreen(LockPoint(LockTarget.Get()), Point, true)) return;
+	HUD->DrawRect(FLinearColor::Black, Point.X - 4, Point.Y - 4, 8, 8);
+	HUD->DrawRect(FLinearColor::White, Point.X - 2, Point.Y - 2, 4, 4);
 }

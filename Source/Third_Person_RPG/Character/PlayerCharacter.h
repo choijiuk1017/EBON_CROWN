@@ -291,6 +291,7 @@ public:
 	void Prayer();
 	void EndPrayer();
 	ECollisionResponse RollPreviousResponse = ECR_Overlap;
+	bool bPreviousRollRotation = false;
 	bool bRollCollisionOverridden = false;
 
 	FTimerHandle PrayerTimerHandle;

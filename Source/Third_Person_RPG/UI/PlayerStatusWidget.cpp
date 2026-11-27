@@ -18,6 +18,9 @@ void UPlayerStatusWidget::InitWithPlayer(APlayerCharacter* InOwner)
 
 	if (OwnerPlayer.IsValid())
 	{
+		UpdateHP(OwnerPlayer->CombatStats.CurrentHP, OwnerPlayer->DerivedStats.MaxHP);
+		UpdateFP(OwnerPlayer->CombatStats.CurrentFP, OwnerPlayer->DerivedStats.MaxFP);
+		UpdateStamina(OwnerPlayer->CombatStats.CurrentStamina, OwnerPlayer->DerivedStats.MaxStamina);
 		OwnerPlayer->OnHPChanged.AddUObject(this, &UPlayerStatusWidget::UpdateHP);
 		OwnerPlayer->OnFPChanged.AddUObject(this, &UPlayerStatusWidget::UpdateFP);
 		OwnerPlayer->OnStaminaChanged.AddUObject(this, &UPlayerStatusWidget::UpdateStamina);

@@ -54,14 +54,9 @@ void ALevelConvertTrigger::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, A
 
 	if (APlayerCharacter* PC = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0)))
 	{
-		if (UInventoryComponent* Inventory = PC->FindComponentByClass<UInventoryComponent>())
+		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(PC->GetGameInstance()))
 		{
-			if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(GetWorld())))
-			{
-				GI->CacheInventory(Inventory->GetAllItems());
-				GI->CacheEquippedWeapon(Inventory->EquippedWeaponItem);
-				GI->RegisterPlayerStatFromPlayer(PC);
-			}
+			GI->CachePlayerForTravel(PC);
 		}
 	}
 

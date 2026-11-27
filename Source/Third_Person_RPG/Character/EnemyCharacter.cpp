@@ -3,6 +3,8 @@
 
 #include "Third_Person_RPG/Character/EnemyCharacter.h"
 #include "Third_Person_RPG/Character/CombatBalance.h"
+#include "Character/DeathRagdoll.h"
+#include "UObject/ConstructorHelpers.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
@@ -24,6 +26,9 @@ AEnemyCharacter::AEnemyCharacter()
 {
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	static ConstructorHelpers::FClassFinder<UHPBar> DefaultBar(TEXT("/Game/BluePrint/UI_Widget/HPBar/WBP_Monster_HPBar"));
+	HPBarWidgetClass = DefaultBar.Class;
 
 	WeaponMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("WeaponMesh"));
 
@@ -53,19 +58,21 @@ void AEnemyCharacter::BeginPlay()
 			EnemyStats.AttackPower, EnemyStats.Defense, CurrencyReward);
 	}
 
-	if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
+	EnsureHPBar();
+}
+
+void AEnemyCharacter::EnsureHPBar()
+{
+	if (HPBarWidget || !HPBarWidgetClass) return;
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 	{
-		if (HPBarWidgetClass)
+		HPBarWidget = CreateWidget<UHPBar>(PC, HPBarWidgetClass);
+		if (HPBarWidget)
 		{
-			HPBarWidget = CreateWidget<UHPBar>(PC, HPBarWidgetClass);
-			if (HPBarWidget)
-			{
-				HPBarWidget->AddToViewport();
-				HPBarWidget->SetVisibility(ESlateVisibility::Hidden); // 처음엔 안 보이게
-			}
+			HPBarWidget->SetVisibility(ESlateVisibility::Collapsed);
+			HPBarWidget->AddToViewport();
 		}
 	}
-	
 }
 
 // Called every frame
@@ -105,6 +112,8 @@ void AEnemyCharacter::Tick(float DeltaTime)
 	if (PC->ProjectWorldLocationToScreen(WorldLocation, ScreenPosition))
 	{
 		HPBarWidget->SetPositionInViewport(ScreenPosition);
+		if (GetWorldTimerManager().IsTimerActive(HideHPBarTimerHandle))
+			HPBarWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
 	}
 }
 
@@ -118,6 +127,7 @@ void AEnemyCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComp
 
 void AEnemyCharacter::BaseAttackCheck()
 {
+	if (bIsDead) return;
 	TArray<FOverlapResult> OverlapResults;
 
 	// 충돌 탐지를 위한 시작 지점
@@ -174,6 +184,7 @@ void AEnemyCharacter::BaseAttackCheck()
 
 void AEnemyCharacter::PlayAttackMontageByIndex(int32 Index)
 {
+	if (bIsDead) return;
 	if (AttackMontages.IsValidIndex(Index) && GetMesh() && GetMesh()->GetAnimInstance())
 	{
 		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -195,6 +206,7 @@ void AEnemyCharacter::Heal(int32 Amount)
 
 void AEnemyCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	if (bIsDead) return;
 
 	CurrentAttackStep++;
 
@@ -253,6 +265,7 @@ void AEnemyCharacter::GrantCurrencyToKiller()
 
 void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 {
+	if (bIsDead || DamageAmount <= 0) return;
 	const bool bWasAlive = !bIsDead && EnemyStats.CurrentHP > 0;
 	int32 Defense = EnemyStats.Defense;
 
@@ -271,6 +284,8 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 
 	if (EnemyStats.CurrentHP <= 0)
 	{
+		EnemyStats.CurrentHP = 0;
+		bIsDead = true;
 		if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
 		{
 			AnimInstance->StopAllMontages(0.1f);
@@ -283,8 +298,7 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 		}
 
 		// 사망 처리
-		EnemyStats.CurrentHP = 0;
-		bIsDead = true;
+
 
 		GrantCurrencyToKiller();
 
@@ -302,14 +316,8 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 			AIController->UnPossess();
 		}
 
-		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-		USkeletalMeshComponent* MeshComponent = GetMesh();
-		MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		MeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-		
+		GetWorldTimerManager().ClearTimer(HitReactTimerHandle);
+		StartDeathRagdoll(*this);
 
 		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 
@@ -341,6 +349,7 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 
 
 
+	EnsureHPBar();
 	if (HPBarWidget)
 	{
 		float Percent = static_cast<float>(EnemyStats.CurrentHP) / static_cast<float>(EnemyStats.MaxHP);
@@ -351,13 +360,13 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 		GetWorld()->GetTimerManager().ClearTimer(HideHPBarTimerHandle);
 		GetWorld()->GetTimerManager().SetTimer(
 			HideHPBarTimerHandle,
-			[this]()
+			FTimerDelegate::CreateWeakLambda(this, [this]()
 			{
 				if (HPBarWidget && !bIsDead)
 				{
 					HPBarWidget->SetVisibility(ESlateVisibility::Hidden);
 				}
-			},
+			}),
 			1.0f,
 			false
 		);

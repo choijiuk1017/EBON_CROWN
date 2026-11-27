@@ -5,7 +5,7 @@
 
 #include "AIController.h"
 #include "GameFramework/Character.h"
-#include "Kismet/GameplayStatics.h"
+
 #include "Animation/AnimInstance.h"
 #include "Third_Person_RPG/Character/EnemyCharacter.h"
 #include "Third_Person_RPG/Character/BossCharacter.h"
@@ -27,7 +27,9 @@ EBTNodeResult::Type UBTTask_PlayAttackMontage::ExecuteTask(UBehaviorTreeComponen
 
     AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(ControlledPawn);
     ABossCharacter* Boss = Cast<ABossCharacter>(ControlledPawn);
-    APlayerCharacter* Player = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(ControlledPawn->GetWorld(), 0));
+    const UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
+    APlayerCharacter* Player = Blackboard ? Cast<APlayerCharacter>(Blackboard->GetValueAsObject(TEXT("Target"))) : nullptr;
+    if (!IsValid(Player) || Player->bIsDead) return EBTNodeResult::Failed;
 
     if (Enemy)
     {

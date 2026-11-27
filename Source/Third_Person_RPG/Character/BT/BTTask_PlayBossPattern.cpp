@@ -3,6 +3,7 @@
 
 #include "Third_Person_RPG/Character/BT/BTTask_PlayBossPattern.h"
 #include "AIController.h"
+#include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Third_Person_RPG/Character/BossCharacter.h"
 
@@ -18,7 +19,9 @@ EBTNodeResult::Type UBTTask_PlayBossPattern::ExecuteTask(UBehaviorTreeComponent&
 	if (!AICon) return EBTNodeResult::Failed;
 
 	ABossCharacter* Boss = Cast<ABossCharacter>(AICon->GetPawn());
-	if (!Boss) return EBTNodeResult::Failed;
+	const UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
+	const auto* Player = Blackboard ? Cast<APlayerCharacter>(Blackboard->GetValueAsObject(TEXT("Target"))) : nullptr;
+	if (!Boss || Boss->bIsDead || !IsValid(Player) || Player->bIsDead) return EBTNodeResult::Failed;
 
 	Boss->PlayPatternMontage(PatternIndex);
 	return EBTNodeResult::InProgress ;

@@ -110,7 +110,7 @@ FReply UpauseMenuWidget::HandleMenuKey(FKey Key, bool bRepeat)
 void UpauseMenuWidget::OnReturnToTitleClicked()
 {
 	if (OwningPC) OwningPC->SetPause(false);
-	UGameplayStatics::OpenLevel(GetWorld(), TitleLevelName);
+	UGameplayStatics::OpenLevel(this, FName(TEXT("/Game/Levels/TitleMap")));
 }
 
 void UpauseMenuWidget::OnQuitGameClicked()

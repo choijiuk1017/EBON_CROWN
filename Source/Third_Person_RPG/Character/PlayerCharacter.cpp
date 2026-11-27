@@ -2,6 +2,7 @@
 
 
 #include "PlayerCharacter.h"
+#include "Animation/AnimMontage.h"
 
 #include "Engine/EngineTypes.h"
 #include "Engine/OverlapResult.h"
@@ -303,7 +304,7 @@ void APlayerCharacter::BeginPlay()
 
 			CurrentEquipedWidgetInstance->UpdatePotionCounts(HPPotionCount, FPPotionCount);
 
-			CurrentEquipedWidgetInstance->ChangePotion(bIsHPPotion, bIsHPPotion ? MaxHPPotionCount : MaxFPPotionCount);
+			CurrentEquipedWidgetInstance->ChangePotion(bIsHPPotion, bIsHPPotion ? HPPotionCount : FPPotionCount);
 		}
 	}
 }
@@ -525,16 +526,33 @@ void APlayerCharacter::EndSprint()
 
 void APlayerCharacter::RollStart()
 {
-	if (bIsInteracting || bIsRoll || bIsSkillActing || bIsDead || bIsKneeling || bIsPopupInventory) return;
-	if (!HasStamina(StaminaCost_Roll)) return;
+	if (bIsRoll || bIsDead || bIsKneeling || bIsPopupInventory || !HasStamina(StaminaCost_Roll)) return;
 	UAnimInstance* Anim = GetMesh()->GetAnimInstance();
 	if (!Anim || !RollMontage) return;
+	const bool bPickingUp = PickUpMontage && Anim->Montage_IsPlaying(PickUpMontage);
+	if (bIsInteracting && !bPickingUp) return;
+	UAnimMontage* Previous = Anim->GetCurrentActiveMontage();
+	const bool bActionLockedMovement = bIsAttacking || bIsSkillActing || bPickingUp;
 	const float Half = DerivedStats.MaxEquipLoad * 0.5f;
 	const float W = GetCurrentWeaponWeight();
 	const float Rate = W <= Half - 5.f ? 2.f : (W < Half + 5.f ? 1.5f : 1.f);
-	if (Anim->Montage_Play(RollMontage, Rate) <= 0.f) return;
-	ConsumeStamina(StaminaCost_Roll);
+	if (Anim->Montage_PlayWithBlendIn(RollMontage, FAlphaBlendArgs(0.04f), Rate) <= 0.f) return;
 	bIsRoll = true;
+	StartRolling();
+	if (Previous && Previous != RollMontage && Anim->Montage_IsPlaying(Previous))
+		Anim->Montage_Stop(0.04f, Previous);
+	GetWorldTimerManager().ClearTimer(ComboTimerHandle);
+	bHasComboInput = false;
+	CurrentComboCount = 0;
+	bIsAttacking = false;
+	bIsSkillActing = false;
+	if (CombatComponent) CombatComponent->DisableWeaponHitBox();
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (bActionLockedMovement && Movement->MovementMode == MOVE_None)
+		Movement->SetMovementMode(MOVE_Walking);
+	bPreviousRollRotation = Movement->bAllowPhysicsRotationDuringAnimRootMotion;
+	Movement->bAllowPhysicsRotationDuringAnimRootMotion = true;
+	ConsumeStamina(StaminaCost_Roll);
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &APlayerCharacter::RollEnd);
 	Anim->Montage_SetEndDelegate(EndDelegate, RollMontage);
@@ -542,6 +560,7 @@ void APlayerCharacter::RollStart()
 
 void APlayerCharacter::RollEnd(UAnimMontage* Montage, bool bInterrupted)
 {
+	GetCharacterMovement()->bAllowPhysicsRotationDuringAnimRootMotion = bPreviousRollRotation;
 	bIsRoll = false;
 	EndRolling();
 }
@@ -833,9 +852,10 @@ void APlayerCharacter::DrinkPotion()
 	if (!AnimInstance || !DrinkPotionMontage) return;
 	if (AnimInstance->Montage_IsPlaying(DrinkPotionMontage)) return;
 
-	// Lock movement only after the montage actually starts.
+	// Drink on the upper-body slot while locomotion continues.
 	if (AnimInstance->Montage_Play(DrinkPotionMontage) <= 0.f) return;
-	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
+	if (FAnimMontageInstance* Drink = AnimInstance->GetActiveInstanceForMontage(DrinkPotionMontage))
+		Drink->PushDisableRootMotion();
 
 	FOnMontageEnded EndDelegate;
 	EndDelegate.BindUObject(this, &APlayerCharacter::UsePotion);
@@ -861,14 +881,6 @@ void APlayerCharacter::UsePotion(UAnimMontage* Montage, bool bInterrupted)
 {
 	if (Montage != DrinkPotionMontage)
 		return;
-
-	// An interrupted drink must release its movement lock too. Do not unlock
-	// movement owned by another action, or revive a dead character.
-	if (!bIsDead && !bIsInteracting && !bIsKneeling && !bIsAttacking && !bIsSkillActing &&
-		GetCharacterMovement()->MovementMode == EMovementMode::MOVE_None)
-	{
-		GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
-	}
 
 	if (!bInterrupted && !bIsDead)
 	{
@@ -948,6 +960,7 @@ void APlayerCharacter::RespawnPlayer()
 
 void APlayerCharacter::StartRolling()
 {
+	if (!bIsRoll) return;
 	UCapsuleComponent* Capsule = GetCapsuleComponent();
 
 	if (!Capsule) return;
@@ -963,6 +976,7 @@ void APlayerCharacter::StartRolling()
 
 void APlayerCharacter::EndRolling()
 {
+	if (bIsRoll) return;
 	UCapsuleComponent* Capsule = GetCapsuleComponent();
 	if (!Capsule) return;
 
@@ -1184,7 +1198,8 @@ void APlayerCharacter::ForceStopActionsForCutscene()
 	EndSprint();            
 	
 	bIsAttacking = false;
-	bIsRoll = false;
+	if (bIsRoll && GetMesh()->GetAnimInstance())
+		GetMesh()->GetAnimInstance()->Montage_Stop(0.f, RollMontage);
 	bIsSkillActing = false;
 
 	GetCharacterMovement()->StopMovementImmediately();

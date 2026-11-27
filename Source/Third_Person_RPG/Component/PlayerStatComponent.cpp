@@ -166,7 +166,7 @@ void UPlayerStatComponent::TakeDamage(int32 DamageAmount)
 {
 	if (!OwnerPlayer) return;
 
-	if (OwnerPlayer->bIsDead) return;
+	if (OwnerPlayer->bIsDead || OwnerPlayer->bIsRoll) return;
 	if (OwnerPlayer->CombatStats.CurrentHP <= 0) return;
 
 	const int32 Defense = OwnerPlayer->CombatStats.Defense;
@@ -208,16 +208,10 @@ void UPlayerStatComponent::TakeDamage(int32 DamageAmount)
 				DeathWidget->AddToViewport();
 			}
 
-			if (UInventoryComponent* Inventory = OwnerPlayer->FindComponentByClass<UInventoryComponent>())
-			{
-				if (UTPRGameInstance* GI =
-					Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(OwnerPlayer->GetWorld())))
-				{
-					GI->CacheInventory(Inventory->GetAllItems());
-					GI->CacheEquippedWeapon(Inventory->EquippedWeaponItem);
-					GI->RegisterPlayerStatFromPlayer(OwnerPlayer);
-				}
-			}
+		}
+		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(OwnerPlayer->GetGameInstance()))
+		{
+			GI->CachePlayerForTravel(OwnerPlayer);
 		}
 
 		OwnerPlayer->GetWorldTimerManager().SetTimer(
@@ -231,7 +225,6 @@ void UPlayerStatComponent::TakeDamage(int32 DamageAmount)
 		return;
 	}
 
-	OwnerPlayer->bIsRoll = false;
 	OwnerPlayer->bIsAttacking = false;
 
 	UAnimInstance* AnimInstance = OwnerPlayer->GetMesh()->GetAnimInstance();
@@ -272,6 +265,13 @@ void UPlayerStatComponent::FillSaveData(FPlayerStatSaveData& OutSaveData) const
 {
 	if (!OwnerPlayer) return;
 
+	OutSaveData.bHasResourceSnapshot = !OwnerPlayer->bIsDead && OwnerPlayer->CombatStats.CurrentHP > 0;
+	OutSaveData.CurrentHP = OwnerPlayer->CombatStats.CurrentHP;
+	OutSaveData.CurrentFP = OwnerPlayer->CombatStats.CurrentFP;
+	OutSaveData.CurrentStamina = OwnerPlayer->CombatStats.CurrentStamina;
+	OutSaveData.HPPotions = OwnerPlayer->HPPotionCount;
+	OutSaveData.FPPotions = OwnerPlayer->FPPotionCount;
+	OutSaveData.bHPSelected = OwnerPlayer->bIsHPPotion;
 	OutSaveData.BaseAttributes = OwnerPlayer->CharacterAttributes;
 	OutSaveData.DerivedStats = OwnerPlayer->DerivedStats;
 	OutSaveData.Level = OwnerPlayer->Level;
@@ -303,9 +303,15 @@ void UPlayerStatComponent::ApplySaveData(const FPlayerStatSaveData& InSaveData)
 
 	CalculateDerivedStats();
 
-	OwnerPlayer->CombatStats.CurrentHP = OwnerPlayer->DerivedStats.MaxHP;
-	OwnerPlayer->CombatStats.CurrentFP = OwnerPlayer->DerivedStats.MaxFP;
-	OwnerPlayer->CombatStats.CurrentStamina = OwnerPlayer->DerivedStats.MaxStamina;
+	const bool bRestore = InSaveData.bHasResourceSnapshot;
+	auto& Combat = OwnerPlayer->CombatStats;
+	const auto& Max = OwnerPlayer->DerivedStats;
+	Combat.CurrentHP = bRestore ? FMath::Clamp(InSaveData.CurrentHP, 1, Max.MaxHP) : Max.MaxHP;
+	Combat.CurrentFP = bRestore ? FMath::Clamp(InSaveData.CurrentFP, 0, Max.MaxFP) : Max.MaxFP;
+	Combat.CurrentStamina = bRestore ? FMath::Clamp(InSaveData.CurrentStamina, 0, Max.MaxStamina) : Max.MaxStamina;
+	OwnerPlayer->HPPotionCount = bRestore ? FMath::Clamp(InSaveData.HPPotions, 0, OwnerPlayer->MaxHPPotionCount) : OwnerPlayer->MaxHPPotionCount;
+	OwnerPlayer->FPPotionCount = bRestore ? FMath::Clamp(InSaveData.FPPotions, 0, OwnerPlayer->MaxFPPotionCount) : OwnerPlayer->MaxFPPotionCount;
+	if (bRestore) OwnerPlayer->bIsHPPotion = InSaveData.bHPSelected;
 
 	OwnerPlayer->ResetCombatStats();
 	OwnerPlayer->CombatStats.Poise = OwnerPlayer->DerivedStats.Poise;

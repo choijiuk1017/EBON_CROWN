@@ -39,8 +39,14 @@ struct FPlayerStatSaveData
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
 	FDerivedStats DerivedStats;
 
-	//UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Stat")
-	//FCombatStats CombatStats; // HP/FP/Stamina�� Current �� ���Ե� �ɷ� ����
+	// Older saves and death respawns use the refill path.
+	UPROPERTY() bool bHasResourceSnapshot = false;
+	UPROPERTY() int32 CurrentHP = 0;
+	UPROPERTY() int32 CurrentFP = 0;
+	UPROPERTY() int32 CurrentStamina = 0;
+	UPROPERTY() int32 HPPotions = 0;
+	UPROPERTY() int32 FPPotions = 0;
+	UPROPERTY() bool bHPSelected = true;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Economy")
 	int32 Currency = 0;

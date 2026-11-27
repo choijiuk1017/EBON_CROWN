@@ -129,14 +129,9 @@ void UWorldTravelMenu::ConfirmSelection()
 	}
 	if (APlayerCharacter* PC = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(GetWorld(), 0)))
 	{
-		if (UInventoryComponent* Inventory = PC->FindComponentByClass<UInventoryComponent>())
+		if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(PC->GetGameInstance()))
 		{
-			if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(GetWorld())))
-			{
-				GI->RegisterPlayerStatFromPlayer(PC);
-				GI->CacheEquippedWeapon(Inventory->EquippedWeaponItem);
-				GI->CacheInventory(Inventory->GetAllItems());
-			}
+			GI->CachePlayerForTravel(PC);
 		}
 	}
 	if (LoadingScreen)

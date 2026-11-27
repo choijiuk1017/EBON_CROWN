@@ -15,6 +15,7 @@ UBTService_DetectPlayer::UBTService_DetectPlayer()
 {
 	NodeName = TEXT("Detect Player");
 	Interval = 0.3f;
+	bCallTickOnSearchStart = true;
 }
 
 void UBTService_DetectPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
@@ -28,20 +29,18 @@ void UBTService_DetectPlayer::TickNode(UBehaviorTreeComponent& OwnerComp, uint8*
 	if (!ControlledPawn) return;
 
 	APlayerCharacter* Player = Cast<APlayerCharacter>(UGameplayStatics::GetPlayerCharacter(ControlledPawn->GetWorld(), 0));
-	if (!Player) return;
+	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
+	if (!Blackboard) return;
 
-	const float Distance = FVector::Dist(Player->GetActorLocation(), ControlledPawn->GetActorLocation());
+	const bool bHasTarget = IsValid(Player) && !Player->bIsDead;
+	const float Distance = bHasTarget
+		? FVector::Dist(Player->GetActorLocation(), ControlledPawn->GetActorLocation())
+		: TNumericLimits<float>::Max();
+	Blackboard->SetValueAsFloat(DistanceKey, Distance);
+	Blackboard->SetValueAsObject(TargetKey, bHasTarget ? Player : nullptr);
 
-	UBlackboardComponent* BlackboardComp = OwnerComp.GetBlackboardComponent();
-	if (BlackboardComp)
-	{
-		BlackboardComp->SetValueAsObject(TargetKey, Player);
-		BlackboardComp->SetValueAsFloat(DistanceKey, Distance);
-
-	}
-
-	if (Distance <= 1000.0f)
-	{
+	if (Distance <= 1000.f)
 		AIController->SetFocus(Player);
-	}
+	else
+		AIController->ClearFocus(EAIFocusPriority::Gameplay);
 }

@@ -3,6 +3,7 @@
 
 #include "Third_Person_RPG/Character/BossCharacter.h"
 #include "Third_Person_RPG/Character/CombatBalance.h"
+#include "Character/DeathRagdoll.h"
 
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Third_Person_RPG/Character/EnemyAIController.h"
@@ -167,6 +168,7 @@ void ABossCharacter::BaseAttackCheck()
 
 void ABossCharacter::PlayAttackMontageByIndex(int32 Index)
 {
+	if (bIsDead) return;
 	if (AttackMontages.IsValidIndex(Index) && GetMesh() && GetMesh()->GetAnimInstance())
 	{
 		UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -181,6 +183,7 @@ void ABossCharacter::PlayAttackMontageByIndex(int32 Index)
 
 void ABossCharacter::PlayPatternMontage(int32 Index)
 {
+	if (bIsDead) return;
 	//GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
 	if (!PatternDatas.IsValidIndex(Index)) return;
 
@@ -226,6 +229,7 @@ void ABossCharacter::PlayPatternMontage(int32 Index)
 
 void ABossCharacter::PatternEnd(UAnimMontage* Montage, bool IsEnded)
 {
+	if (bIsDead) return;
 	GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_Walking);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Block);
 }
@@ -317,6 +321,7 @@ void ABossCharacter::SpawnSkillEffectByData(const USkillData* Data)
 
 void ABossCharacter::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
 {
+	if (bIsDead) return;
 
 	CurrentAttackStep++;
 
@@ -404,12 +409,8 @@ void ABossCharacter::TakeDamage(int32 DamageAmount)
 			HPBarWidget = nullptr;
 		}
 
-		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		GetCapsuleComponent()->SetCollisionResponseToAllChannels(ECR_Ignore);
-
-		USkeletalMeshComponent* MeshComponent = GetMesh();
-		MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		MeshComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+		GetWorldTimerManager().ClearTimer(HitReactTimerHandle);
+		StartDeathRagdoll(*this);
 
 		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 
