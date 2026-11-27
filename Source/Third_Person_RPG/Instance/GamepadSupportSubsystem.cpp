@@ -3,11 +3,8 @@
 #include "Blueprint/WidgetBlueprintLibrary.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Text/STextBlock.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/SWindow.h"
-#include "Styling/CoreStyle.h"
 #include "UI/pauseMenuWidget.h"
 #include "UI/TitleScreenWidget.h"
 #include "UI/Tutorial/TutorialWidget.h"
@@ -19,15 +16,11 @@
 #include "UI/InventoryUI/InventoryWidget.h"
 #include "InputCoreTypes.h"
 #include "Blueprint/WidgetTree.h"
-#include "Components/TextBlock.h"
 #include "Components/Image.h"
-#include "Components/Border.h"
 #include "UI/InteractionWidget.h"
 #include "UI/DialogueWidget.h"
 #include "UI/InputPromptIcons.h"
-#include "UI/InlineInputPrompts.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/SBoxPanel.h"
+#include "Components/WidgetSwitcher.h"
 
 class FGamepadUIProcessor final : public IInputProcessor
 {
@@ -54,6 +47,11 @@ public:
     }
     void Send(UUserWidget* Menu, FKey Key)
     {
+        if (ULevelUpMenu* Level = Cast<ULevelUpMenu>(Menu))
+        {
+            Level->HandleLevelKey(Key, false);
+            return;
+        }
         if (UpauseMenuWidget* Pause = Cast<UpauseMenuWidget>(Menu))
         {
             Pause->HandleMenuKey(Key);
@@ -116,7 +114,7 @@ public:
     virtual void Tick(float, FSlateApplication&, TSharedRef<ICursor>) override
     {
         RefreshPrompts();
-        RefreshIconHint();
+        RefreshHintPage();
         UUserWidget* Menu = FindMenu();
         if (!Menu) { Axis = FVector2D::ZeroVector; HeldDirection = FKey(); return; }
         FKey Direction;
@@ -133,14 +131,11 @@ public:
     }
 private:
 
-    FInlineInputPrompts InlinePrompts;
+
     struct FKeyImageState { FString OriginalName; TWeakObjectPtr<UObject> AppliedResource; FString AppliedIcon; };
     TMap<TWeakObjectPtr<UWidget>, FKeyImageState> KeyImages;
     FInputPromptIcons Icons;
-    TSharedPtr<SHorizontalBox> IconHint;
-    FString HintContext;
-    bool bHintWasGamepad = false;
-    void UpdateKeyImage(UWidget* Image, const FSlateBrush& CurrentBrush, const UUserWidget* Owner)
+    void UpdateKeyImage(UImage* Image, const FSlateBrush& CurrentBrush, const UUserWidget* Owner)
     {
         FKeyImageState* State = KeyImages.Find(Image);
         UObject* Resource = CurrentBrush.GetResourceObject();
@@ -186,15 +181,14 @@ private:
                 Icon = bUsingGamepad ? TEXT("xbox_button_color_y") : TEXT("keyboard_f");
             if (bUsingGamepad && Owner->IsA<UInventoryWidget>() && FCString::Strcmp(Entry.Keyboard, TEXT("keyboard_e")) == 0)
                 Icon = TEXT("xbox_button_color_b");
+            if (bUsingGamepad && (Image->GetName().StartsWith(TEXT("BackIcon")) ||
+                (State->OriginalName == TEXT("keyboard_x") && (Owner->IsA<ULevelUpMenu>() || Owner->IsA<UWorldTravelMenu>() || Owner->IsA<UWeaponUpgradeWidget>())))) Icon = TEXT("xbox_button_color_b");
             if (State->AppliedIcon == Icon) return;
             if (const FSlateBrush* Brush = Icons.Get(Icon))
             {
                 FSlateBrush Replacement = CurrentBrush;
                 Replacement.SetResourceObject(Brush->GetResourceObject());
-                if (UImage* IconImage = Cast<UImage>(Image))
-                    IconImage->SetBrush(Replacement);
-                else if (UBorder* IconBorder = Cast<UBorder>(Image))
-                    IconBorder->SetBrush(Replacement);
+                Image->SetBrush(Replacement);
                 State->AppliedResource = Replacement.GetResourceObject();
                 State->AppliedIcon = Icon;
             }
@@ -202,63 +196,30 @@ private:
         }
     }
 public:
-    TSharedRef<SWidget> MakeIconHint()
-    {
-        SAssignNew(IconHint, SHorizontalBox);
-        RefreshIconHint();
-        return IconHint.ToSharedRef();
-    }
+    TWeakObjectPtr<UWidgetSwitcher> HintPages;
 private:
-    void RefreshIconHint()
+    void RefreshHintPage()
     {
-        if (!IconHint) return;
+        if (!HintPages.IsValid()) return;
         UUserWidget* Menu = FindMenu();
-        const FString Context = Menu ? Menu->GetClass()->GetName() : TEXT("Gameplay");
-        if (Context == HintContext && bUsingGamepad == bHintWasGamepad) return;
-        HintContext = Context;
-        bHintWasGamepad = bUsingGamepad;
-        IconHint->ClearChildren();
-        auto Add = [&](const TCHAR* Keyboard, const TCHAR* Pad, const TCHAR* Label)
-        {
-            const FSlateBrush* Brush = Icons.Get(bUsingGamepad ? Pad : Keyboard);
-            if (Brush)
-                IconHint->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(4.f, 0.f)
-                [SNew(SBox).WidthOverride(32.f).HeightOverride(32.f)[SNew(SImage).Image(Brush)]];
-            IconHint->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 10.f, 0.f)
-                [SNew(STextBlock).Font(FCoreStyle::GetDefaultFontStyle("Regular", 13))
-                .ShadowOffset(FVector2D(1.f, 1.f)).ShadowColorAndOpacity(FLinearColor::Black).Text(FText::FromString(Label))];
-        };
+        const bool bLocalGuide = Menu && Menu->GetWidgetFromName(TEXT("MenuInputGuide"));
+        HintPages->SetVisibility(bLocalGuide ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
+        if (bLocalGuide) return;
+        int32 Page = 0;
         if (Menu)
         {
-            if (Menu->IsA<UTutorialWidget>()) { Add(TEXT("keyboard_enter"), TEXT("xbox_button_color_a"), TEXT("\ud655\uc778")); return; }
-            Add(TEXT("keyboard_arrows"), TEXT("xbox_dpad"), TEXT("\uc120\ud0dd"));
-            Add(TEXT("keyboard_enter"), TEXT("xbox_button_color_a"), Menu->IsA<UInventoryWidget>() ? TEXT("\uc7a5\ucc29") : TEXT("\ud655\uc778"));
-            if (Menu->IsA<UInventoryWidget>())
-            {
-                Add(TEXT("keyboard_delete"), TEXT("xbox_button_color_y"), TEXT("\ud574\uc81c"));
-                Add(TEXT("keyboard_page_up"), TEXT("xbox_lb"), TEXT("\uc774\uc804 \ud0ed"));
-                Add(TEXT("keyboard_page_down"), TEXT("xbox_rb"), TEXT("\ub2e4\uc74c \ud0ed"));
-            }
-            if (!Menu->IsA<UTitleScreenWidget>())
-                Add(Menu->IsA<UpauseMenuWidget>() ? TEXT("keyboard_escape") : Menu->IsA<UInventoryWidget>() ? TEXT("keyboard_e") : TEXT("keyboard_x"), TEXT("xbox_button_color_b"), TEXT("\ub2eb\uae30"));
-            return;
+            Page = Menu->IsA<UTutorialWidget>() ? 1 : Menu->IsA<UInventoryWidget>() ? 2 :
+                Menu->IsA<UTitleScreenWidget>() ? 3 : Menu->IsA<UpauseMenuWidget>() ? 4 : 5;
         }
-        Add(TEXT("keyboard_f"), TEXT("xbox_button_color_y"), TEXT("\uc0c1\ud638\uc791\uc6a9"));
-        Add(TEXT("mouse_left"), TEXT("xbox_rb"), TEXT("\uacf5\uaca9"));
-        Add(TEXT("keyboard_q"), TEXT("xbox_rt"), TEXT("\uc2a4\ud0ac"));
-        Add(TEXT("keyboard_c"), TEXT("xbox_button_color_b"), TEXT("\uad6c\ub974\uae30"));
-        Add(TEXT("keyboard_x"), TEXT("xbox_button_color_x"), TEXT("\ud3ec\uc158"));
-        Add(TEXT("keyboard_z"), TEXT("xbox_dpad_down"), TEXT("\ud3ec\uc158 \ubcc0\uacbd"));
-        Add(TEXT("keyboard_e"), TEXT("xbox_button_view"), TEXT("\uc778\ubca4\ud1a0\ub9ac"));
+        if (HintPages->GetActiveWidgetIndex() != Page) HintPages->SetActiveWidgetIndex(Page);
     }
-
     double NextPromptRefresh = 0;
     void RefreshPrompts()
     {
         const double Now = FPlatformTime::Seconds();
         if (Now < NextPromptRefresh || !World.IsValid()) return;
         NextPromptRefresh = Now + 0.1;
-        InlinePrompts.Prune();
+
         for (auto It = KeyImages.CreateIterator(); It; ++It)
             if (!It.Key().IsValid()) It.RemoveCurrent();
         TArray<UUserWidget*> Widgets;
@@ -278,10 +239,6 @@ private:
                 {
                     UpdateKeyImage(Image, Image->GetBrush(), Widget);
                 }
-                else if (UBorder* Border = Cast<UBorder>(Child))
-                    UpdateKeyImage(Border, Border->Background, Widget);
-                if (UTextBlock* Text = Cast<UTextBlock>(Child))
-                    InlinePrompts.Update(Widget, Text, bUsingGamepad);
             }
         }
     }
@@ -310,19 +267,27 @@ void UGamepadSupportSubsystem::Tick(float)
         Processor = MakeShared<FGamepadUIProcessor>(GetWorld());
         FSlateApplication::Get().RegisterInputPreProcessor(Processor, 1);
     }
-    if (!Hint.IsValid())
+    if (!Hint && !bTriedHint && GetWorld()->GetFirstPlayerController())
     {
-        Hint = SNew(SBox).HAlign(HAlign_Right).VAlign(VAlign_Top).Padding(20.f)
-            .Visibility(EVisibility::HitTestInvisible)
-            [Processor->MakeIconHint()];
-        Viewport->AddViewportWidgetContent(Hint.ToSharedRef(), 19000);
+        bTriedHint = true;
+        if (UClass* Class = LoadClass<UUserWidget>(nullptr, TEXT("/Game/BluePrint/UI_Widget/Input/WBP_InputHints.WBP_InputHints_C")))
+        {
+            Hint = CreateWidget<UUserWidget>(GetWorld()->GetFirstPlayerController(), Class);
+            if (Hint)
+            {
+                Hint->AddToViewport(19000);
+                Hint->SetVisibility(ESlateVisibility::HitTestInvisible);
+                Processor->HintPages = Cast<UWidgetSwitcher>(Hint->GetWidgetFromName(TEXT("HintPages")));
+            }
+        }
     }
 }
 void UGamepadSupportSubsystem::Deinitialize()
 {
     if (Processor.IsValid() && FSlateApplication::IsInitialized()) FSlateApplication::Get().UnregisterInputPreProcessor(Processor);
-    if (Hint.IsValid() && GetWorld()->GetGameViewport()) GetWorld()->GetGameViewport()->RemoveViewportWidgetContent(Hint.ToSharedRef());
-    Hint.Reset(); Processor.Reset();
+    if (Hint) Hint->RemoveFromParent();
+    Hint = nullptr;
+    Processor.Reset();
     Super::Deinitialize();
 }
 

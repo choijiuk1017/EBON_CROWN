@@ -5,6 +5,7 @@
 #include "Third_Person_RPG/Character/CombatBalance.h"
 
 #include "Components/Button.h"
+#include "UI/SavePointUI/SavePointMenu.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/TextBlock.h"
@@ -22,7 +23,7 @@ void ULevelUpMenu::NativeConstruct()
 
 	if (DecisionButton)
 	{
-		DecisionButton->OnClicked.AddDynamic(this, &ULevelUpMenu::OnDecisionClicked);
+		DecisionButton->OnClicked.AddUniqueDynamic(this, &ULevelUpMenu::OnDecisionClicked);
 	}
 
 }
@@ -171,43 +172,48 @@ void ULevelUpMenu::UpdateRowHighlight()
 	}
 }
 
-FReply ULevelUpMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
+FReply ULevelUpMenu::NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
-	const FKey Key = InKeyEvent.GetKey();
+	FReply Reply = HandleLevelKey(InKeyEvent.GetKey(), InKeyEvent.IsRepeat());
+	return Reply.IsEventHandled() ? Reply : Super::NativeOnPreviewKeyDown(InGeometry, InKeyEvent);
+}
 
-	if (Key == EKeys::Up)
+FReply ULevelUpMenu::HandleLevelKey(FKey Key, bool bRepeat)
+{
+
+	if (Key == EKeys::Up || Key == EKeys::Gamepad_DPad_Up)
 	{
 		MoveSelection(-1);
 		return FReply::Handled();
 	}
-	if (Key == EKeys::Down)
+	if (Key == EKeys::Down || Key == EKeys::Gamepad_DPad_Down)
 	{
 		MoveSelection(+1);
 		return FReply::Handled();
 	}
-	if (Key == EKeys::Right)
+	if (Key == EKeys::Right || Key == EKeys::Gamepad_DPad_Right)
 	{
 		AdjustStat(SelectedIndex, +1);
 		return FReply::Handled();
 	}
-	if (Key == EKeys::Left)
+	if (Key == EKeys::Left || Key == EKeys::Gamepad_DPad_Left)
 	{
 		AdjustStat(SelectedIndex, -1);
 		return FReply::Handled();
 	}
 	// 방향키만으로 “결정”까지 하고 싶으시면 엔터/스페이스를 허용합니다.
-	if (Key == EKeys::Enter || Key == EKeys::Virtual_Accept || Key == EKeys::SpaceBar)
+	if (Key == EKeys::Enter || Key == EKeys::Virtual_Accept || Key == EKeys::SpaceBar || Key == EKeys::Gamepad_FaceButton_Bottom)
 	{
-		OnDecisionClicked();
+		if (!bRepeat) OnDecisionClicked();
 		return FReply::Handled();
 	}
-	if (Key == EKeys::X)
+	if (Key == EKeys::X || Key == EKeys::Gamepad_FaceButton_Right)
 	{
-		OnExitClicked();
+		if (!bRepeat) OnExitClicked();
 		return FReply::Handled();
 	}
 
-	return Super::NativeOnKeyDown(InGeometry, InKeyEvent);
+	return FReply::Unhandled();
 }
 
 void ULevelUpMenu::MoveSelection(int32 Delta)
@@ -324,33 +330,5 @@ void ULevelUpMenu::OnDecisionClicked()
 
 void ULevelUpMenu::OnExitClicked()
 {
-	CloseMenuToGameOnly();
-}
-
-void ULevelUpMenu::CloseMenuToGameOnly()
-{
-	Pending.Init(0, 8);
-
-	UGameplayStatics::SetGamePaused(GetWorld(), false);
-	APlayerController* PC = GetOwningPlayer();
-	if (PC)
-	{
-		PC->SetInputMode(FInputModeGameOnly());
-		PC->bShowMouseCursor = false;
-
-		APawn* Pawn = PC->GetPawn();
-		if (Pawn)
-		{
-			APlayerCharacter* PlayerCharacter = Cast<APlayerCharacter>(Pawn);
-			if (PlayerCharacter)
-			{
-				PlayerCharacter->EndInteractSavePoint(); // 호출
-
-				PlayerCharacter->SavePointMenuInstance = nullptr;
-			}
-		}
-
-	}
-
-	RemoveFromParent();
+	USavePointMenu::ReturnFromSubmenu(*this);
 }

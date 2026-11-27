@@ -24,5 +24,7 @@ private:
     TWeakObjectPtr<ULevelSequencePlayer> ActivePlayer;
     TWeakObjectPtr<ULevelSequencePlayer> PendingSkip;
     TSharedPtr<IInputProcessor> InputProcessor;
-    TSharedPtr<SWidget> Hint;
+    UPROPERTY(Transient) TObjectPtr<class UUserWidget> Hint;
+    UPROPERTY(Transient) TSubclassOf<UUserWidget> HintClass;
+    bool bTriedHintClass = false;
 };

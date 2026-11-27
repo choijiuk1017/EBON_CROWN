@@ -32,29 +32,45 @@ void UTitleScreenWidget::NativeConstruct()
 void UTitleScreenWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 {
 	Super::NativeTick(MyGeometry, InDeltaTime);
+	if (CreditsScreen && !CreditsScreen->IsInViewport())
+	{
+		CreditsScreen = nullptr;
+		SetKeyboardFocus();
+	}
 }
 
 FReply UTitleScreenWidget::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent)
 {
 	FKey Key = InKeyEvent.GetKey();
 
+	if (CreditsScreen && CreditsScreen->IsInViewport())
+	{
+		if (!InKeyEvent.IsRepeat() && (Key == EKeys::X || Key == EKeys::Escape))
+		{
+			CreditsScreen->RemoveFromParent();
+			CreditsScreen = nullptr;
+			SetKeyboardFocus();
+		}
+		return FReply::Handled();
+	}
+	const int32 Count = CreditsText ? 4 : 3;
 	if (Key == EKeys::Down)
 	{
-		CurrentIndex = (CurrentIndex + 1) % 3;
+		CurrentIndex = (CurrentIndex + 1) % Count;
 		UpdateSelection();
 		return FReply::Handled();
 	}
 
 	if (Key == EKeys::Up)
 	{
-		CurrentIndex = (CurrentIndex - 1 + 3) % 3;
+		CurrentIndex = (CurrentIndex - 1 + Count) % Count;
 		UpdateSelection();
 		return FReply::Handled();
 	}
 
 	if (Key == EKeys::Enter || Key == EKeys::SpaceBar)
 	{
-		ExecuteSelection();
+		if (!InKeyEvent.IsRepeat()) ExecuteSelection();
 		return FReply::Handled();
 	}
 
@@ -70,18 +86,51 @@ void UTitleScreenWidget::UpdateSelection()
 	NewGameText->SetColorAndOpacity(NormalColor);
 	LoadGameText->SetColorAndOpacity(NormalColor);
 	ExitText->SetColorAndOpacity(NormalColor);
+	if (CreditsText) CreditsText->SetColorAndOpacity(NormalColor);
 
 	switch (CurrentIndex)
 	{
 	case 0: NewGameText->SetColorAndOpacity(SelectedColor); break;
 	case 1: LoadGameText->SetColorAndOpacity(SelectedColor); break;
 	case 2: ExitText->SetColorAndOpacity(SelectedColor); break;
+	case 3: if (CreditsText) CreditsText->SetColorAndOpacity(SelectedColor); break;
+	}
+}
+
+FReply UTitleScreenWidget::NativeOnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event)
+{
+	if (!bStartingGame && !CreditsScreen && CreditsText && CreditsText->IsHovered() &&
+		Event.GetEffectingButton() == EKeys::LeftMouseButton)
+	{
+		CurrentIndex = 3;
+		UpdateSelection();
+		OpenCredits();
+		return FReply::Handled();
+	}
+	return Super::NativeOnMouseButtonDown(Geometry, Event);
+}
+
+void UTitleScreenWidget::OpenCredits()
+{
+	if (CreditsScreen) return;
+	UClass* Class = LoadClass<UUserWidget>(nullptr, TEXT("/Game/BluePrint/UI_Widget/WBP_Credit.WBP_Credit_C"));
+	if (!Class) return;
+	CreditsScreen = CreateWidget<UUserWidget>(GetOwningPlayer(), Class);
+	if (CreditsScreen)
+	{
+		CreditsScreen->AddToViewport(50);
+		SetKeyboardFocus();
 	}
 }
 
 void UTitleScreenWidget::ExecuteSelection()
 {
 	if (bStartingGame) return;
+	if (CurrentIndex == 3)
+	{
+		OpenCredits();
+		return;
+	}
 	if (CurrentIndex == 2)
 	{
 		UKismetSystemLibrary::QuitGame(GetWorld(), nullptr, EQuitPreference::Quit, true);

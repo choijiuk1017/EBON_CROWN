@@ -10,6 +10,7 @@
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Third_Person_RPG/Inventory/InventoryComponent.h"
 #include "Components/Button.h"
+#include "UI/SavePointUI/SavePointMenu.h"
 
 UWorldTravelMenu::UWorldTravelMenu(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -50,7 +51,7 @@ FReply UWorldTravelMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKey
 	}
 	else if (PressedKey == EKeys::Enter)
 	{
-		ConfirmSelection();
+		if (!InKeyEvent.IsRepeat()) ConfirmSelection();
 		return FReply::Handled();
 	}
 	if (PressedKey == EKeys::X)
@@ -188,33 +189,5 @@ void UWorldTravelMenu::UpdatePreviewImage(const FString& PointName)
 
 void UWorldTravelMenu::OnExitClicked()
 {
-	CloseMenuToGameOnly();
-}
-
-void UWorldTravelMenu::CloseMenuToGameOnly()
-{
-	UGameplayStatics::SetGamePaused(GetWorld(), false);
-
-	APlayerController* PC = GetOwningPlayer();
-	if (PC)
-	{
-		PC->SetInputMode(FInputModeGameOnly());
-		PC->bShowMouseCursor = false;
-
-		APawn* Pawn = PC->GetPawn();
-		if (Pawn)
-		{
-			APlayerCharacter* PlayerCharacter = Cast<APlayerCharacter>(Pawn);
-			if (PlayerCharacter)
-			{
-				PlayerCharacter->EndInteractSavePoint(); // 호출
-
-				PlayerCharacter->SavePointMenuInstance = nullptr;
-			}
-		}
-
-	}
-
-	// 위젯 제거
-	RemoveFromParent();
+	USavePointMenu::ReturnFromSubmenu(*this);
 }

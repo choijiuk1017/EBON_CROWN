@@ -17,6 +17,7 @@ class THIRD_PERSON_RPG_API UTitleScreenWidget : public UUserWidget
 public:
 	virtual void NativeConstruct() override;
 
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& Geometry, const FPointerEvent& Event) override;
 	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
@@ -41,6 +42,10 @@ protected:
 
 	UUserWidget* LoadingScreenWidget;
 
+
+	UPROPERTY(meta = (BindWidgetOptional)) UTextBlock* CreditsText;
+	UPROPERTY(Transient) TObjectPtr<UUserWidget> CreditsScreen;
+	void OpenCredits();
 
 	int32 CurrentIndex = 0;
 	bool bStartingGame = false;

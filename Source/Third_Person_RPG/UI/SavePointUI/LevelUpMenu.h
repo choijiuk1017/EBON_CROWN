@@ -19,6 +19,7 @@ class THIRD_PERSON_RPG_API ULevelUpMenu : public UUserWidget
 	GENERATED_BODY()
 
 public:
+	FReply HandleLevelKey(FKey Key, bool bRepeat);
 	void Init();
 
 	void UpdateCurrentStats();
@@ -26,7 +27,7 @@ public:
 protected:
 	virtual void NativeConstruct() override;
 
-	virtual FReply NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
+	virtual FReply NativeOnPreviewKeyDown(const FGeometry& InGeometry, const FKeyEvent& InKeyEvent) override;
 
 private:
 	UPROPERTY(meta = (BindWidget)) UTextBlock* CurrentLevelText;
@@ -96,5 +97,4 @@ private:
 	UFUNCTION() void OnDecisionClicked();
 
 	UFUNCTION() void OnExitClicked();
-	void CloseMenuToGameOnly();
 };

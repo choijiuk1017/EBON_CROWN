@@ -16,5 +16,6 @@ public:
     virtual bool DoesSupportWorldType(EWorldType::Type Type) const override;
 private:
     TSharedPtr<FGamepadUIProcessor> Processor;
-    TSharedPtr<SWidget> Hint;
+    UPROPERTY(Transient) TObjectPtr<class UUserWidget> Hint;
+    bool bTriedHint = false;
 };

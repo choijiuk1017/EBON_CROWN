@@ -66,6 +66,8 @@ void USavePointMenu::NativeConstruct()
 
 void USavePointMenu::NativeDestruct()
 {
+	if (ActiveSubmenu) ActiveSubmenu->RemoveFromParent();
+	ActiveSubmenu = nullptr;
 	Super::NativeDestruct();
 }
 
@@ -74,6 +76,7 @@ FReply USavePointMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEv
 	const FKey PressedKey = InKeyEvent.GetKey();
 	if (PressedKey == EKeys::X)
 	{
+		if (InKeyEvent.IsRepeat()) return FReply::Handled();
 		if (APlayerCharacter* Player = Cast<APlayerCharacter>(GetOwningPlayerPawn()))
 			Player->EndInteractSavePoint();
 		return FReply::Handled();
@@ -92,7 +95,7 @@ FReply USavePointMenu::NativeOnKeyDown(const FGeometry& InGeometry, const FKeyEv
 	}
 	else if (PressedKey == EKeys::Enter)
 	{
-		ConfirmSelection();
+		if (!InKeyEvent.IsRepeat()) ConfirmSelection();
 		return FReply::Handled();
 	}
 
@@ -158,44 +161,34 @@ void USavePointMenu::ConfirmSelection()
 	}
 	else if (SelectedText == TEXT("레벨 업"))
 	{
-		if (LevelUpMenuClass)
-		{
-			ULevelUpMenu* LevelUpMenu = CreateWidget<ULevelUpMenu>(GetWorld(), LevelUpMenuClass);
-			if (LevelUpMenu)
-			{
-				LevelUpMenu->AddToViewport();
-
-				APlayerController* PC = GetOwningPlayer();
-				if (PC)
-				{
-					FInputModeUIOnly Mode;
-					Mode.SetWidgetToFocus(LevelUpMenu->TakeWidget());
-					PC->SetInputMode(Mode);
-					PC->bShowMouseCursor = true;
-				}
-			}
-		}
-		RemoveFromParent();
+		ActiveSubmenu = CreateWidget<ULevelUpMenu>(GetOwningPlayer(), LevelUpMenuClass);
 	}
 	else if (SelectedText == TEXT("화톳불 이동"))
 	{
-		if (WorldTravelMenuClass)
-		{
-			UWorldTravelMenu* TravelMenu = CreateWidget<UWorldTravelMenu>(GetWorld(), WorldTravelMenuClass);
-			if (TravelMenu)
-			{
-				TravelMenu->AddToViewport();
-
-				APlayerController* PC = GetOwningPlayer();
-				if (PC)
-				{
-					FInputModeUIOnly Mode;
-					Mode.SetWidgetToFocus(TravelMenu->TakeWidget());
-					PC->SetInputMode(Mode);
-					PC->bShowMouseCursor = true;
-				}
-			}
-		}
-		RemoveFromParent();
+		ActiveSubmenu = CreateWidget<UWorldTravelMenu>(GetOwningPlayer(), WorldTravelMenuClass);
 	}
+	if (ActiveSubmenu)
+	{
+		SetVisibility(ESlateVisibility::Collapsed);
+		ActiveSubmenu->AddToViewport();
+		APlayerController* PC = GetOwningPlayer();
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(ActiveSubmenu->TakeWidget());
+		PC->SetInputMode(Mode);
+	}
+}
+
+void USavePointMenu::ReturnFromSubmenu(UUserWidget& Child)
+{
+	APlayerController* PC = Child.GetOwningPlayer();
+	APlayerCharacter* Player = Cast<APlayerCharacter>(Child.GetOwningPlayerPawn());
+	USavePointMenu* Menu = Player ? Player->SavePointMenuInstance : nullptr;
+	Child.RemoveFromParent();
+	if (!PC || !IsValid(Menu) || Menu->ActiveSubmenu != &Child || !Menu->IsInViewport()) return;
+	Menu->ActiveSubmenu = nullptr;
+	Menu->SetVisibility(ESlateVisibility::Visible);
+	FInputModeUIOnly Mode;
+	Mode.SetWidgetToFocus(Menu->TakeWidget());
+	PC->SetInputMode(Mode);
+	Menu->SetUserFocus(PC);
 }

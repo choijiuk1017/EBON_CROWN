@@ -33,6 +33,7 @@ public:
 	void MoveSelectionUp();
 	void MoveSelectionDown();
 	void ConfirmSelection();
+	static void ReturnFromSubmenu(UUserWidget& Child);
 
 
 protected:
@@ -54,6 +55,7 @@ protected:
 private:
 	TArray<USavePointMenuEntry*> EntryWidgets;
 
+	UPROPERTY(Transient) TObjectPtr<UUserWidget> ActiveSubmenu;
 	int32 SelectedIndex = 0;
 	void UpdateSelectionVisual();
 	

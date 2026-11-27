@@ -8,15 +8,9 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/SViewport.h"
 #include "Widgets/SWindow.h"
-#include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/Text/STextBlock.h"
-#include "Styling/CoreStyle.h"
 #include "InputCoreTypes.h"
-#include "UI/InputPromptIcons.h"
-#include "GamepadSupportSubsystem.h"
-#include "Widgets/Images/SImage.h"
-#include "Widgets/SBoxPanel.h"
+#include "Blueprint/UserWidget.h"
+#include "GameFramework/PlayerController.h"
 
 namespace
 {
@@ -62,12 +56,8 @@ TStatId UCutsceneSkipSubsystem::GetStatId() const
 
 void UCutsceneSkipSubsystem::RemoveHint()
 {
-    if (Hint.IsValid())
-    {
-        if (UGameViewportClient* Viewport = GetWorld()->GetGameViewport())
-            Viewport->RemoveViewportWidgetContent(Hint.ToSharedRef());
-        Hint.Reset();
-    }
+    if (Hint) Hint->RemoveFromParent();
+    Hint = nullptr;
 }
 
 void UCutsceneSkipSubsystem::Deinitialize()
@@ -139,29 +129,21 @@ void UCutsceneSkipSubsystem::Tick(float DeltaTime)
         RemoveHint();
         return;
     }
-    if (!Hint.IsValid())
+    if (!Hint && World->GetFirstPlayerController())
     {
-        const TSharedRef<FInputPromptIcons> Icons = MakeShared<FInputPromptIcons>();
-        const FSlateBrush* KeyboardIcon = Icons->Get(TEXT("keyboard_space"));
-        const FSlateBrush* PadIcon = Icons->Get(TEXT("xbox_button_menu"));
-        const TWeakObjectPtr<UWorld> WeakWorld(World);
-        Hint = SNew(SBox)
-            .HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(FMargin(32.f))
-            .Visibility(EVisibility::HitTestInvisible)
-            [SNew(SBorder).Padding(FMargin(16.f, 8.f))
-                .BorderBackgroundColor(FLinearColor(0.f, 0.f, 0.f, 0.7f))
-                [SNew(SHorizontalBox)
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(0.f, 0.f, 8.f, 0.f)
-                    [SNew(SBox).WidthOverride(40.f).HeightOverride(40.f)
-                        [SNew(SImage).Image_Lambda([Icons, KeyboardIcon, PadIcon, WeakWorld]() -> const FSlateBrush*
-                        {
-                            const UGamepadSupportSubsystem* Input = WeakWorld.IsValid() ? WeakWorld->GetSubsystem<UGamepadSupportSubsystem>() : nullptr;
-                            return Input && Input->IsUsingGamepad() ? PadIcon : KeyboardIcon;
-                        })]]
-                    + SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-                    [SNew(STextBlock).Text(FText::FromString(TEXT("Skip")))
-                        .Font(FCoreStyle::GetDefaultFontStyle("Regular", 20))
-                        .ColorAndOpacity(FLinearColor::White)]]];
-        World->GetGameViewport()->AddViewportWidgetContent(Hint.ToSharedRef(), 20000);
+        if (!bTriedHintClass)
+        {
+            bTriedHintClass = true;
+            HintClass = LoadClass<UUserWidget>(nullptr, TEXT("/Game/BluePrint/UI_Widget/Input/WBP_CutsceneSkip.WBP_CutsceneSkip_C"));
+        }
+        if (HintClass)
+        {
+            Hint = CreateWidget<UUserWidget>(World->GetFirstPlayerController(), HintClass);
+            if (Hint)
+            {
+                Hint->AddToViewport(20000);
+                Hint->SetVisibility(ESlateVisibility::HitTestInvisible);
+            }
+        }
     }
 }

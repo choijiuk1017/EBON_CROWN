@@ -57,6 +57,5 @@ private:
 	void UpdatePreviewImage(const FString& PointName);
 
 	UFUNCTION() void OnExitClicked();
-	void CloseMenuToGameOnly();
 
 };
