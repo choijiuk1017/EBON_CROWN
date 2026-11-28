@@ -39,7 +39,6 @@ public:
 	void SetComboTimer();
 
 	void BaseAttackCheck();
-	bool PlaySurfaceImpact(const FVector& Origin, const FQuat& Rotation, const struct FCollisionShape& Shape, bool bWeapon) const;
 	void PlayMeleeImpact(const FVector& Location, bool bWeapon) const;
 
 	void SkillStart();

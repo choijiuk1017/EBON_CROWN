@@ -9,6 +9,8 @@
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "Blueprint/UserWidget.h"
 #include "TimerManager.h"
+#include "Engine/StreamableManager.h"
+#include "Instance/LevelPreloadSubsystem.h"
 
 // Sets default values
 ALevelConvertTrigger::ALevelConvertTrigger()
@@ -70,22 +72,8 @@ void ALevelConvertTrigger::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, A
 		}
 	}
 
-	TWeakObjectPtr<ALevelConvertTrigger> WeakThis(this);
-	const FName LevelToOpen = NextLevelName;
+	GetGameInstance()->GetSubsystem<ULevelPreloadSubsystem>()->OpenWithProgress(NextLevelName);
 
-	World->GetTimerManager().ClearTimer(LevelTransitionTimerHandle);
-	World->GetTimerManager().SetTimer(
-		LevelTransitionTimerHandle,
-		FTimerDelegate::CreateLambda([WeakThis, LevelToOpen]()
-			{
-				if (!WeakThis.IsValid()) return;
-
-				UGameplayStatics::OpenLevel(WeakThis.Get(), LevelToOpen);
-			}),
-		0.1f,
-		false
-	);
-	
 	UE_LOG(LogTemp, Warning, TEXT("Trying to convert level: %s"), *NextLevelName.ToString());
 
 }

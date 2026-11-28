@@ -25,9 +25,10 @@ public class Third_Person_RPG : ModuleRules
 			"MovieSceneTracks"
         });
 
-		PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry" });
+		PrivateDependencyModuleNames.AddRange(new string[] { "AssetRegistry", "SignalProcessing" });
 
         if (Target.bBuildEditor) PrivateDependencyModuleNames.AddRange(new string[] { "UMGEditor", "UnrealEd" });
+        RuntimeDependencies.Add("$(ProjectDir)/Content/AudioSource/442903__qubodup__slash.wav", StagedFileType.UFS);
         PublicIncludePaths.Add("Third_Person_RPG");
         RuntimeDependencies.Add("$(ProjectDir)/Content/UI/InputPrompts/...", StagedFileType.NonUFS);
 

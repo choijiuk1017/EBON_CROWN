@@ -15,9 +15,16 @@ class THIRD_PERSON_RPG_API ULevelPreloadSubsystem : public UGameInstanceSubsyste
 public:
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
-	void PreloadLevel(FName LevelName);
+	TSharedPtr<FStreamableHandle> PreloadLevel(FName LevelName);
+
+	void OpenWithProgress(FName LevelName);
 
 private:
+	void RemoveProgress();
+	TSharedPtr<class SWidget> ProgressOverlay;
+	TWeakObjectPtr<class UGameViewportClient> ProgressViewport;
+	FTimerHandle TravelTimer;
+	bool bTravelPending = false;
 	void ReleasePreload();
 	void OnMapLoaded(UWorld* World);
 	FDelegateHandle MapLoadedHandle;

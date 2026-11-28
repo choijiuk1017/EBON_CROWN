@@ -4,6 +4,7 @@
 #include "Third_Person_RPG/UI/TitleScreenWidget.h"
 
 #include "Components/TextBlock.h"
+#include "Instance/LevelPreloadSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "GameFramework/PlayerController.h"
@@ -170,6 +171,6 @@ void UTitleScreenWidget::ExecuteSelection()
 				PC->bShowMouseCursor = false;
 				UE_LOG(LogTemp, Log, TEXT("[TitleTravel] Restored game input before opening %s"), *TargetMap.ToString());
 			}
-			UGameplayStatics::OpenLevel(this, TargetMap);
+			GetGameInstance()->GetSubsystem<ULevelPreloadSubsystem>()->OpenWithProgress(TargetMap);
 		}), 0.1f, false);
 }

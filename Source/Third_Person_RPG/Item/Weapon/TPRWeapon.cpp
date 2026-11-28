@@ -29,7 +29,7 @@ ATPRWeapon::ATPRWeapon()
 
 	HitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("HitBox"));
 	HitBox->SetupAttachment(Weapon);  
-	HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	HitBox->SetCollisionObjectType(ECC_WorldDynamic); 
 	HitBox->SetCollisionResponseToAllChannels(ECR_Ignore);
 	HitBox->SetCollisionResponseToChannel(ECC_GameTraceChannel1, ECR_Overlap);
@@ -69,13 +69,7 @@ void ATPRWeapon::Tick(float DeltaTime)
 		FVector Location = HitBox->GetComponentLocation();
 		FVector Extent = HitBox->GetScaledBoxExtent();
 		FRotator Rotation = HitBox->GetComponentRotation();
-		if (bCheckSurfaceImpact)
-		{
-			const auto* Player = Cast<APlayerCharacter>(GetOwner());
-			if (Player && Player->GetCombatComponent() &&
-				Player->GetCombatComponent()->PlaySurfaceImpact(Location, Rotation.Quaternion(), FCollisionShape::MakeBox(Extent), true))
-				bCheckSurfaceImpact = false;
-		}
+
 
 		// ��ġ�� ���Ͱ� �ִ��� �˻� (����ȭ�� ���)
 		bool bHasOverlap = false;
@@ -119,14 +113,12 @@ void ATPRWeapon::Tick(float DeltaTime)
 void ATPRWeapon::EnableHitBox()
 {
 	DamagedActors.Empty();
-	bCheckSurfaceImpact = true;
 
 	HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 }
 
 void ATPRWeapon::DisableHitBox()
 {
-	bCheckSurfaceImpact = false;
 	HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
@@ -140,6 +132,7 @@ void ATPRWeapon::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	ABossCharacter* Boss = Cast<ABossCharacter>(OtherActor);
 	if ((!Enemy && !Boss) || (Enemy && Enemy->bIsDead) || (Boss && Boss->bIsDead)) return;
 
+	if (Player->CombatStats.AttackPower <= 0) return;
 	DamagedActors.Add(OtherActor);
 	if (Enemy)
 	{

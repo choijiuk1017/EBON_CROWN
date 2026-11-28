@@ -1,8 +1,12 @@
 // PlayerCombatComponent.cpp
 
 #include "PlayerCombatComponent.h"
+#include "Misc/ConfigCacheIni.h"
 #include "Sound/SoundBase.h"
-#include "UObject/ConstructorHelpers.h"
+#include "Sound/SampleBufferIO.h"
+#include "Sound/SoundWave.h"
+#include "Audio.h"
+#include "Misc/FileHelper.h"
 #include "Character/TPRPlayerController.h"
 
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
@@ -28,9 +32,7 @@
 UPlayerCombatComponent::UPlayerCombatComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	static ConstructorHelpers::FObjectFinder<USoundBase> HitSound(TEXT("/Game/Sound/Monster/Dark_Knight/Dark_Knight_TakeDamage"));
-	WeaponImpact = HitSound.Object;
-	FistImpact = HitSound.Object;
+
 }
 
 void UPlayerCombatComponent::BeginPlay()
@@ -40,6 +42,23 @@ void UPlayerCombatComponent::BeginPlay()
 	if (!OwnerPlayer)
 	{
 		OwnerPlayer = Cast<APlayerCharacter>(GetOwner());
+	}
+
+	if (!WeaponImpact || !FistImpact)
+	{
+		TArray<uint8> File;
+		FWaveModInfo Wave;
+		const FString Path = FPaths::ProjectContentDir() / TEXT("AudioSource/442903__qubodup__slash.wav");
+		if (FFileHelper::LoadFileToArray(File, *Path) && Wave.ReadWaveInfo(File.GetData(), File.Num()) &&
+			*Wave.pFormatTag == 1 && *Wave.pBitsPerSample == 16)
+		{
+			Audio::FSampleBuffer Samples(reinterpret_cast<const int16*>(Wave.SampleDataStart),
+				Wave.SampleDataSize / sizeof(int16), *Wave.pChannels, *Wave.pSamplesPerSec);
+			Audio::FSoundWavePCMWriter Writer;
+			USoundWave* Slash = Writer.SynchronouslyWriteSoundWave(Samples);
+			if (!WeaponImpact) WeaponImpact = Slash;
+			if (!FistImpact) FistImpact = Slash;
+		}
 	}
 
 	InitializeSkillEffectPool();
@@ -272,31 +291,10 @@ void UPlayerCombatComponent::PlayMeleeImpact(const FVector& Location, bool bWeap
 	if (Sound) UGameplayStatics::PlaySoundAtLocation(this, Sound, Location, 0.7f, FMath::FRandRange(0.95f, 1.05f));
 }
 
-bool UPlayerCombatComponent::PlaySurfaceImpact(const FVector& Origin, const FQuat& Rotation, const FCollisionShape& Shape, bool bWeapon) const
-{
-	if (!OwnerPlayer) return false;
-	FCollisionObjectQueryParams Objects;
-	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
-	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
-	FCollisionQueryParams Query(SCENE_QUERY_STAT(MeleeSurface), false, OwnerPlayer);
-	Query.AddIgnoredActor(OwnerPlayer->CurrentWeapon);
-	TArray<FOverlapResult> Surfaces;
-	GetWorld()->OverlapMultiByObjectType(Surfaces, Origin, Rotation, Objects, Shape, Query);
-	for (const FOverlapResult& Surface : Surfaces)
-	{
-		const UPrimitiveComponent* Part = Surface.GetComponent();
-		if (!Part || !Surface.GetActor() || Surface.GetActor()->IsA<ACharacter>() ||
-			Part->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Block) continue;
-		PlayMeleeImpact(Origin, bWeapon);
-		return true;
-	}
-	return false;
-}
-
 void UPlayerCombatComponent::BaseAttackCheck()
 {
 	if (!OwnerPlayer || OwnerPlayer->bIsRoll) return;
-	if (OwnerPlayer->CurrentWeapon != nullptr) return;
+	if (OwnerPlayer->CurrentWeapon != nullptr || OwnerPlayer->CombatStats.AttackPower <= 0) return;
 	if (!OwnerPlayer->BasicComboData) return;
 
 	TArray<FOverlapResult> OverlapResults;
@@ -359,7 +357,6 @@ void UPlayerCombatComponent::BaseAttackCheck()
 		}
 	}
 
-	PlaySurfaceImpact(CapsuleOrigin, CapsuleRotation, CollisionShape, false);
 	const FColor DrawColor = bHasHit ? FColor::Green : FColor::Red;
 	DrawDebugCapsule(
 		OwnerPlayer->GetWorld(),
@@ -515,11 +512,19 @@ void UPlayerCombatComponent::SkillAttackCheck()
 	const FVector Midpoint = (Start + End) * 0.5f;
 	const float Radius = FMath::Max(1.f, OwnerPlayer->SkillData->SkillRadius);
 	const float HalfHeight = FVector::Distance(Start, End) * 0.5f + Radius;
-	const bool bHasHit = OwnerPlayer->GetWorld()->OverlapMultiByChannel(
+	OwnerPlayer->GetWorld()->OverlapMultiByChannel(
 		OverlapResults, Midpoint, FRotationMatrix::MakeFromZ(Forward).ToQuat(),
 		CHANNEL_ACTION, FCollisionShape::MakeCapsule(Radius, HalfHeight), Params);
-	const int32 SkillDamage = FMath::Max(0, FMath::RoundToInt(OwnerPlayer->SkillData->SkillDamage));
+	float Damage = OwnerPlayer->SkillData->SkillDamage;
+	float WeaponMultiplier = 0.f;
+	if (OwnerPlayer->CurrentWeapon && GConfig && GConfig->GetFloat(TEXT("EbonCrown.WeaponSkillDamage"),
+		*OwnerPlayer->SkillData->GetPathName(), WeaponMultiplier, GGameIni))
+	{
+		Damage = OwnerPlayer->CombatStats.AttackPower * WeaponMultiplier;
+	}
+	const int32 SkillDamage = FMath::Max(0, FMath::RoundToInt(Damage));
 
+	const bool bHasHit = !OverlapResults.IsEmpty();
 	if (bHasHit)
 	{
 		TSet<AEnemyCharacter*> HitEnemies;

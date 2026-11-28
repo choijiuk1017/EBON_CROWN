@@ -3,6 +3,7 @@
 
 #include "Third_Person_RPG/UI/SavePointUI/WorldTravelMenu.h"
 #include "Components/VerticalBox.h"
+#include "Instance/LevelPreloadSubsystem.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/Image.h"
 #include "Third_Person_RPG/UI/SavePointUI/WorldTravelMenuEntry.h"
@@ -107,7 +108,7 @@ void UWorldTravelMenu::ConfirmSelection()
 
 	UGameplayStatics::SetGamePaused(GetWorld(), false);
 
-	const FSavePointInfo& Info = EntryWidgets[SelectedIndex]->GetSavePointInfo();
+	const FSavePointInfo Info = EntryWidgets[SelectedIndex]->GetSavePointInfo();
 
 	if (UTPRGameInstance* GI = Cast<UTPRGameInstance>(UGameplayStatics::GetGameInstance(GetWorld())))
 	{
@@ -144,14 +145,7 @@ void UWorldTravelMenu::ConfirmSelection()
 	}
 
 
-	FTimerHandle TimerHandle;
-	FTimerDelegate TimerDelegate;
-	TimerDelegate.BindLambda([=, this]()  
-		{
-			UGameplayStatics::OpenLevel(this, Info.MapName);
-		});
-
-	GetWorld()->GetTimerManager().SetTimer(TimerHandle, TimerDelegate, 0.1f, false);
+	GetGameInstance()->GetSubsystem<ULevelPreloadSubsystem>()->OpenWithProgress(Info.MapName);
 }
 
 void UWorldTravelMenu::UpdateSelectionVisual()

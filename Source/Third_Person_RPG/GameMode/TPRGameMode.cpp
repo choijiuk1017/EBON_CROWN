@@ -9,6 +9,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/HUD.h"
+#include "Engine/PostProcessVolume.h"
 
 
 
@@ -41,6 +42,18 @@ ATPRGameMode::ATPRGameMode()
 void ATPRGameMode::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Dungeon2 uses baked virtual lightmaps. Apply the same GI to gameplay and cinematic cameras.
+	if (UGameplayStatics::GetCurrentLevelName(this) == TEXT("Dungeon2"))
+	{
+		if (auto* Lighting = GetWorld()->SpawnActor<APostProcessVolume>())
+		{
+			Lighting->bUnbound = true;
+			Lighting->Priority = 10000.f;
+			Lighting->Settings.bOverride_DynamicGlobalIlluminationMethod = true;
+			Lighting->Settings.DynamicGlobalIlluminationMethod = EDynamicGlobalIlluminationMethod::None;
+		}
+	}
 
 	if (APlayerController* PC = UGameplayStatics::GetPlayerController(this, 0))
 	{
