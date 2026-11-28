@@ -39,6 +39,8 @@ public:
 	void SetComboTimer();
 
 	void BaseAttackCheck();
+	bool PlaySurfaceImpact(const FVector& Origin, const FQuat& Rotation, const struct FCollisionShape& Shape, bool bWeapon) const;
+	void PlayMeleeImpact(const FVector& Location, bool bWeapon) const;
 
 	void SkillStart();
 	void SkillEnd(UAnimMontage* Montage, bool bInterrupted);
@@ -64,6 +66,11 @@ public:
 protected:
 	UPROPERTY()
 	TArray<UParticleSystemComponent*> SkillEffectPool;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Audio")
+	TObjectPtr<class USoundBase> WeaponImpact;
+	UPROPERTY(EditDefaultsOnly, Category = "Combat|Audio")
+	TObjectPtr<class USoundBase> FistImpact;
 
 	UPROPERTY(EditAnywhere, Category = "Skill Effect Pool")
 	int32 SkillEffectPoolSize = 10;

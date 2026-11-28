@@ -3,6 +3,7 @@
 
 #include "Third_Person_RPG/Character/BT/BTTask_PlayBossPattern.h"
 #include "AIController.h"
+#include "Data/SkillData.h"
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Third_Person_RPG/Character/BossCharacter.h"
@@ -23,19 +24,25 @@ EBTNodeResult::Type UBTTask_PlayBossPattern::ExecuteTask(UBehaviorTreeComponent&
 	const auto* Player = Blackboard ? Cast<APlayerCharacter>(Blackboard->GetValueAsObject(TEXT("Target"))) : nullptr;
 	if (!Boss || Boss->bIsDead || !IsValid(Player) || Player->bIsDead) return EBTNodeResult::Failed;
 
+	if (!Boss->PatternDatas.IsValidIndex(PatternIndex) || !IsValid(Boss->PatternDatas[PatternIndex])) return EBTNodeResult::Failed;
+	const auto* Montage = Boss->PatternDatas[PatternIndex]->SkillMontage.Get();
+	const auto* Anim = Boss->GetMesh()->GetAnimInstance();
+	if (!Montage || !Anim) return EBTNodeResult::Failed;
 	Boss->PlayPatternMontage(PatternIndex);
-	return EBTNodeResult::InProgress ;
+	return Anim->Montage_IsActive(Montage) ? EBTNodeResult::InProgress : EBTNodeResult::Failed;
 }
 
 void UBTTask_PlayBossPattern::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
 {
-	ABossCharacter* Boss = Cast<ABossCharacter>(OwnerComp.GetAIOwner()->GetPawn());
-	if (!Boss) return;
-
-	if (!Boss->GetMesh() || !Boss->GetMesh()->GetAnimInstance()) return;
-
-	if (!Boss->GetMesh()->GetAnimInstance()->Montage_IsPlaying(nullptr))
+	const auto* AI = OwnerComp.GetAIOwner();
+	const auto* Boss = AI ? Cast<ABossCharacter>(AI->GetPawn()) : nullptr;
+	if (!Boss || Boss->bIsDead || !Boss->PatternDatas.IsValidIndex(PatternIndex) || !IsValid(Boss->PatternDatas[PatternIndex]))
 	{
-		FinishLatentTask(OwnerComp, EBTNodeResult::Succeeded);
+		FinishLatentTask(OwnerComp, EBTNodeResult::Failed);
+		return;
 	}
+	const auto* Anim = Boss->GetMesh()->GetAnimInstance();
+	const auto* Montage = Boss->PatternDatas[PatternIndex]->SkillMontage.Get();
+	if (!Anim || !Montage || !Anim->Montage_IsActive(Montage))
+		FinishLatentTask(OwnerComp, Anim && Montage ? EBTNodeResult::Succeeded : EBTNodeResult::Failed);
 }

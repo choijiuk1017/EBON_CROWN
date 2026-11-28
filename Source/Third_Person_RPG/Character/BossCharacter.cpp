@@ -183,14 +183,13 @@ void ABossCharacter::PlayAttackMontageByIndex(int32 Index)
 
 void ABossCharacter::PlayPatternMontage(int32 Index)
 {
-	if (bIsDead) return;
-	//GetCharacterMovement()->SetMovementMode(EMovementMode::MOVE_None);
-	if (!PatternDatas.IsValidIndex(Index)) return;
-
-	CurrentPatternIndex = Index;
+	if (bIsDead || !PatternDatas.IsValidIndex(Index) || !IsValid(PatternDatas[Index])) return;
+	UAnimMontage* Montage = PatternDatas[Index]->SkillMontage;
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
-
-	if (BossType == 1 && AnimInstance)
+	if (!AnimInstance || !IsValid(Montage) || AnimInstance->Montage_IsActive(Montage)) return;
+	if (AnimInstance->Montage_Play(Montage) <= 0.f) return;
+	CurrentPatternIndex = Index;
+	if (BossType == 1)
 	{
 		if (Index == 1)
 		{
@@ -206,27 +205,16 @@ void ABossCharacter::PlayPatternMontage(int32 Index)
 			GetCharacterMovement()->DisableMovement();
 		}
 
-		AnimInstance->Montage_Play(PatternDatas[Index]->SkillMontage);
-
 		if (Index == 1)
 		{
 			GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_GameTraceChannel3, ECR_Overlap);
 		}
 		
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &ABossCharacter::PatternEnd);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, PatternDatas[Index]->SkillMontage);
 	}
-	else
-	{
-		AnimInstance->Montage_Play(PatternDatas[Index]->SkillMontage);
-
-		FOnMontageEnded EndDelegate;
-		EndDelegate.BindUObject(this, &ABossCharacter::PatternEnd);
-		AnimInstance->Montage_SetEndDelegate(EndDelegate, PatternDatas[Index]->SkillMontage);
-	}
+	FOnMontageEnded EndDelegate;
+	EndDelegate.BindUObject(this, &ABossCharacter::PatternEnd);
+	AnimInstance->Montage_SetEndDelegate(EndDelegate, Montage);
 }
-
 void ABossCharacter::PatternEnd(UAnimMontage* Montage, bool IsEnded)
 {
 	if (bIsDead) return;
@@ -410,7 +398,7 @@ void ABossCharacter::TakeDamage(int32 DamageAmount)
 		}
 
 		GetWorldTimerManager().ClearTimer(HitReactTimerHandle);
-		StartDeathRagdoll(*this);
+		PlayDeathThenRagdoll(*this);
 
 		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 

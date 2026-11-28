@@ -1,6 +1,8 @@
 // PlayerCombatComponent.cpp
 
 #include "PlayerCombatComponent.h"
+#include "Sound/SoundBase.h"
+#include "UObject/ConstructorHelpers.h"
 #include "Character/TPRPlayerController.h"
 
 #include "Third_Person_RPG/Character/PlayerCharacter.h"
@@ -26,6 +28,9 @@
 UPlayerCombatComponent::UPlayerCombatComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
+	static ConstructorHelpers::FObjectFinder<USoundBase> HitSound(TEXT("/Game/Sound/Monster/Dark_Knight/Dark_Knight_TakeDamage"));
+	WeaponImpact = HitSound.Object;
+	FistImpact = HitSound.Object;
 }
 
 void UPlayerCombatComponent::BeginPlay()
@@ -261,6 +266,33 @@ void UPlayerCombatComponent::SetComboTimer()
 	}
 }
 
+void UPlayerCombatComponent::PlayMeleeImpact(const FVector& Location, bool bWeapon) const
+{
+	USoundBase* Sound = bWeapon ? WeaponImpact.Get() : FistImpact.Get();
+	if (Sound) UGameplayStatics::PlaySoundAtLocation(this, Sound, Location, 0.7f, FMath::FRandRange(0.95f, 1.05f));
+}
+
+bool UPlayerCombatComponent::PlaySurfaceImpact(const FVector& Origin, const FQuat& Rotation, const FCollisionShape& Shape, bool bWeapon) const
+{
+	if (!OwnerPlayer) return false;
+	FCollisionObjectQueryParams Objects;
+	Objects.AddObjectTypesToQuery(ECC_WorldStatic);
+	Objects.AddObjectTypesToQuery(ECC_WorldDynamic);
+	FCollisionQueryParams Query(SCENE_QUERY_STAT(MeleeSurface), false, OwnerPlayer);
+	Query.AddIgnoredActor(OwnerPlayer->CurrentWeapon);
+	TArray<FOverlapResult> Surfaces;
+	GetWorld()->OverlapMultiByObjectType(Surfaces, Origin, Rotation, Objects, Shape, Query);
+	for (const FOverlapResult& Surface : Surfaces)
+	{
+		const UPrimitiveComponent* Part = Surface.GetComponent();
+		if (!Part || !Surface.GetActor() || Surface.GetActor()->IsA<ACharacter>() ||
+			Part->GetCollisionResponseToChannel(ECC_Pawn) != ECR_Block) continue;
+		PlayMeleeImpact(Origin, bWeapon);
+		return true;
+	}
+	return false;
+}
+
 void UPlayerCombatComponent::BaseAttackCheck()
 {
 	if (!OwnerPlayer || OwnerPlayer->bIsRoll) return;
@@ -305,9 +337,10 @@ void UPlayerCombatComponent::BaseAttackCheck()
 		{
 			if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(Result.GetActor()))
 			{
-				if (!HitEnemies.Contains(Enemy))
+				if (!Enemy->bIsDead && !HitEnemies.Contains(Enemy))
 				{
 					HitEnemies.Add(Enemy);
+					PlayMeleeImpact(Enemy->GetActorLocation(), false);
 					Enemy->RegisterAttacker(OwnerPlayer);
 					Enemy->TakeDamage(OwnerPlayer->CombatStats.AttackPower);
 				}
@@ -315,9 +348,10 @@ void UPlayerCombatComponent::BaseAttackCheck()
 
 			if (ABossCharacter* Boss = Cast<ABossCharacter>(Result.GetActor()))
 			{
-				if (!HitBosses.Contains(Boss))
+				if (!Boss->bIsDead && !HitBosses.Contains(Boss))
 				{
 					HitBosses.Add(Boss);
+					PlayMeleeImpact(Boss->GetActorLocation(), false);
 					Boss->RegisterAttacker(OwnerPlayer);
 					Boss->TakeDamage(OwnerPlayer->CombatStats.AttackPower);
 				}
@@ -325,6 +359,7 @@ void UPlayerCombatComponent::BaseAttackCheck()
 		}
 	}
 
+	PlaySurfaceImpact(CapsuleOrigin, CapsuleRotation, CollisionShape, false);
 	const FColor DrawColor = bHasHit ? FColor::Green : FColor::Red;
 	DrawDebugCapsule(
 		OwnerPlayer->GetWorld(),

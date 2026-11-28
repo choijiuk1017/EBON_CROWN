@@ -31,6 +31,7 @@ protected:
 
 	UPROPERTY()
 	TSet<AActor*> DamagedActors;
+	bool bCheckSurfaceImpact = false;
 
 public:	
 	// Called every frame

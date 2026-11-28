@@ -9,6 +9,7 @@
 #include "Third_Person_RPG/Character/EnemyCharacter.h"
 #include "Third_Person_RPG/Character/BossCharacter.h"
 #include "Components/BoxComponent.h"
+#include "Component/PlayerCombatComponent.h"
 #include "Engine/World.h"
 #include "Engine/EngineTypes.h"
 #include "DrawDebugHelpers.h"
@@ -68,6 +69,13 @@ void ATPRWeapon::Tick(float DeltaTime)
 		FVector Location = HitBox->GetComponentLocation();
 		FVector Extent = HitBox->GetScaledBoxExtent();
 		FRotator Rotation = HitBox->GetComponentRotation();
+		if (bCheckSurfaceImpact)
+		{
+			const auto* Player = Cast<APlayerCharacter>(GetOwner());
+			if (Player && Player->GetCombatComponent() &&
+				Player->GetCombatComponent()->PlaySurfaceImpact(Location, Rotation.Quaternion(), FCollisionShape::MakeBox(Extent), true))
+				bCheckSurfaceImpact = false;
+		}
 
 		// ��ġ�� ���Ͱ� �ִ��� �˻� (����ȭ�� ���)
 		bool bHasOverlap = false;
@@ -111,12 +119,14 @@ void ATPRWeapon::Tick(float DeltaTime)
 void ATPRWeapon::EnableHitBox()
 {
 	DamagedActors.Empty();
+	bCheckSurfaceImpact = true;
 
 	HitBox->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 }
 
 void ATPRWeapon::DisableHitBox()
 {
+	bCheckSurfaceImpact = false;
 	HitBox->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
@@ -124,41 +134,23 @@ void ATPRWeapon::OnHitBoxOverlap(UPrimitiveComponent* OverlappedComponent, AActo
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 
-	if (OtherActor && OtherActor != GetOwner())
+	APlayerCharacter* Player = Cast<APlayerCharacter>(GetOwner());
+	if (!Player || !IsValid(OtherActor) || DamagedActors.Contains(OtherActor)) return;
+	AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(OtherActor);
+	ABossCharacter* Boss = Cast<ABossCharacter>(OtherActor);
+	if ((!Enemy && !Boss) || (Enemy && Enemy->bIsDead) || (Boss && Boss->bIsDead)) return;
+
+	DamagedActors.Add(OtherActor);
+	if (Enemy)
 	{
-		if (DamagedActors.Contains(OtherActor))
-		{
-			return; 
-		}
-
-		if (OtherActor->GetClass()->ImplementsInterface(UAnimationAttackInterface::StaticClass()))
-		{
-			if (AEnemyCharacter* Enemy = Cast<AEnemyCharacter>(OtherActor))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Enemy Damaged via Weapon HitBox"));
-
-				Enemy->RegisterAttacker(GetOwner());
-
-				APlayerCharacter* PlayerOwner = Cast<APlayerCharacter>(GetOwner());
-
-				Enemy->TakeDamage(PlayerOwner->CombatStats.AttackPower);
-
-				DamagedActors.Add(OtherActor);
-			}
-
-			if (ABossCharacter* Boss = Cast<ABossCharacter>(OtherActor))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Boss Damaged via Weapon HitBox"));
-
-				Boss->RegisterAttacker(GetOwner());
-
-				APlayerCharacter* PlayerOwner = Cast<APlayerCharacter>(GetOwner());
-
-				Boss->TakeDamage(PlayerOwner->CombatStats.AttackPower);
-
-				DamagedActors.Add(OtherActor);
-			}
-		}
+		Enemy->RegisterAttacker(Player);
+		Enemy->TakeDamage(Player->CombatStats.AttackPower);
 	}
+	else
+	{
+		Boss->RegisterAttacker(Player);
+		Boss->TakeDamage(Player->CombatStats.AttackPower);
+	}
+	if (UPlayerCombatComponent* Combat = Player->GetCombatComponent())
+		Combat->PlayMeleeImpact(bFromSweep ? FVector(SweepResult.ImpactPoint) : HitBox->GetComponentLocation(), true);
 }
-

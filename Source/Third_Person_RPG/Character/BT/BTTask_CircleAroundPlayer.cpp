@@ -26,17 +26,11 @@ EBTNodeResult::Type UBTTask_CircleAroundPlayer::ExecuteTask(UBehaviorTreeCompone
 	AActor* Target = Cast<AActor>(BB->GetValueAsObject(TEXT("Target")));
 	if (!Target) return EBTNodeResult::Failed;
 
-	float Direction = 1.0f;
-	if (BB->IsVectorValueSet(TEXT("CircleDirection")))
-	{
-		Direction = BB->GetValueAsFloat(TEXT("CircleDirection"));
-		if (Direction == 0) Direction = 1.0f;
-	}
+	float Direction = BB->GetValueAsFloat(TEXT("CircleDirection"));
+	if (FMath::IsNearlyZero(Direction)) Direction = 1.f;
 
-	FVector ToTarget = AIPawn->GetActorLocation() - Target->GetActorLocation();
-	ToTarget.Z = 0.0f;
-	ToTarget.Normalize();
-
+	FVector ToTarget = (AIPawn->GetActorLocation() - Target->GetActorLocation()).GetSafeNormal2D();
+	if (ToTarget.IsNearlyZero()) ToTarget = -AIPawn->GetActorForwardVector().GetSafeNormal2D();
 	float RotAngle = AngleStep * Direction;
 	FRotator Rot = FRotator(0.f, RotAngle, 0.f);
 	FVector RotatedDir = Rot.RotateVector(ToTarget);

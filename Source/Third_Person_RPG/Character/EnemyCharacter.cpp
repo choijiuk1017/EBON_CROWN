@@ -317,7 +317,7 @@ void AEnemyCharacter::TakeDamage(int32 DamageAmount)
 		}
 
 		GetWorldTimerManager().ClearTimer(HitReactTimerHandle);
-		StartDeathRagdoll(*this);
+		PlayDeathThenRagdoll(*this);
 
 		UE_LOG(LogTemp, Verbose, TEXT("Monster Dead"));
 

@@ -44,7 +44,8 @@ void ABossBattleInstance::BeginPlay()
 		{
 			if (IsValid(BlockActor)) BlockActor->Destroy();
 		}
-		Destroy();
+		// Dungeon ambience is attached to this actor and must survive a cleared encounter.
+		SetActorTickEnabled(false);
 		return;
 	}
 

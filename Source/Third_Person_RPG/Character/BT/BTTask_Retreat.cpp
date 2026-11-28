@@ -31,7 +31,8 @@ EBTNodeResult::Type UBTTask_Retreat::ExecuteTask(UBehaviorTreeComponent& OwnerCo
 
 	// 목표 위치 계산
 	const float RetreatDistance = 300.f;
-	FVector BackwardDir = -(Player->GetActorLocation() - Enemy->GetActorLocation()).GetSafeNormal();
+	FVector BackwardDir = (Enemy->GetActorLocation() - Player->GetActorLocation()).GetSafeNormal2D();
+	if (BackwardDir.IsNearlyZero()) BackwardDir = -Enemy->GetActorForwardVector().GetSafeNormal2D();
 	RetreatLocation = Enemy->GetActorLocation() + BackwardDir * RetreatDistance; // 멤버 변수로 빼줌
 
 	// 플레이어 바라보기 고정

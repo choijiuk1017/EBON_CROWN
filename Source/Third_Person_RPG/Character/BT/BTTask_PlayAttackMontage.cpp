@@ -15,6 +15,8 @@
 UBTTask_PlayAttackMontage::UBTTask_PlayAttackMontage()
 {
 	NodeName = TEXT("Play Attack Montage");
+	bNotifyTick = true;
+	bCreateNodeInstance = true;
 }
 
 EBTNodeResult::Type UBTTask_PlayAttackMontage::ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory)
@@ -31,42 +33,30 @@ EBTNodeResult::Type UBTTask_PlayAttackMontage::ExecuteTask(UBehaviorTreeComponen
     APlayerCharacter* Player = Blackboard ? Cast<APlayerCharacter>(Blackboard->GetValueAsObject(TEXT("Target"))) : nullptr;
     if (!IsValid(Player) || Player->bIsDead) return EBTNodeResult::Failed;
 
-    if (Enemy)
-    {
-        // 일반 몬스터 공격
-        if (Player)
-        {
-            FVector Direction = (Player->GetActorLocation() - Enemy->GetActorLocation());
-            FRotator LookAtRotation = Direction.Rotation();
-            LookAtRotation.Pitch = 0.f;
-            LookAtRotation.Roll = 0.f;
-            Enemy->SetActorRotation(LookAtRotation);
-        }
-        Enemy->PlayAttackMontageByIndex(Enemy->CurrentAttackStep);
-    }
-    else if (Boss)
-    {
-        UAnimInstance* AnimInstance = Boss->GetMesh() ? Boss->GetMesh()->GetAnimInstance() : nullptr;
-        if (Boss->bIsDead || !AnimInstance || !Boss->AttackMontages.IsValidIndex(Boss->CurrentAttackStep))
-        {
-            return EBTNodeResult::Failed;
-        }
-        UAnimMontage* Montage = Boss->AttackMontages[Boss->CurrentAttackStep];
-        if (!IsValid(Montage) || !IsValid(Montage->GetSkeleton()))
-        {
-            return EBTNodeResult::Failed;
-        }
+    if ((!Enemy && !Boss) || (Enemy && Enemy->bIsDead) || (Boss && Boss->bIsDead)) return EBTNodeResult::Failed;
+    ACharacter* Character = CastChecked<ACharacter>(ControlledPawn);
+    UAnimInstance* Anim = Character->GetMesh()->GetAnimInstance();
+    const auto& Montages = Enemy ? Enemy->AttackMontages : Boss->AttackMontages;
+    const int32 Step = Enemy ? Enemy->CurrentAttackStep : Boss->CurrentAttackStep;
+    if (!Anim || !Montages.IsValidIndex(Step) || !IsValid(Montages[Step]) || !Montages[Step]->GetSkeleton())
+        return EBTNodeResult::Failed;
 
-        if (Player)
-        {
-            FVector Direction = (Player->GetActorLocation() - Boss->GetActorLocation());
-            FRotator LookAtRotation = Direction.Rotation();
-            LookAtRotation.Pitch = 0.f;
-            LookAtRotation.Roll = 0.f;
-            Boss->SetActorRotation(LookAtRotation);
-        }
-        Boss->PlayAttackMontageByIndex(Boss->CurrentAttackStep);
+    ActiveMontage = Montages[Step];
+    if (!Anim->Montage_IsActive(ActiveMontage.Get()))
+    {
+        const FVector Direction = (Player->GetActorLocation() - Character->GetActorLocation()).GetSafeNormal2D();
+        if (!Direction.IsNearlyZero()) Character->SetActorRotation(Direction.Rotation());
+        if (Enemy) Enemy->PlayAttackMontageByIndex(Step);
+        else Boss->PlayAttackMontageByIndex(Step);
     }
+    return Anim->Montage_IsActive(ActiveMontage.Get()) ? EBTNodeResult::InProgress : EBTNodeResult::Failed;
+}
 
-    return EBTNodeResult::Succeeded;
+void UBTTask_PlayAttackMontage::TickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds)
+{
+    const auto* AI = OwnerComp.GetAIOwner();
+    const ACharacter* Character = AI ? Cast<ACharacter>(AI->GetPawn()) : nullptr;
+    const UAnimInstance* Anim = Character ? Character->GetMesh()->GetAnimInstance() : nullptr;
+    if (!Anim || !ActiveMontage.IsValid() || !Anim->Montage_IsActive(ActiveMontage.Get()))
+        FinishLatentTask(OwnerComp, Anim ? EBTNodeResult::Succeeded : EBTNodeResult::Failed);
 }

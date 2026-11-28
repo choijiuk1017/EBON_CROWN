@@ -2,4 +2,4 @@
 
 class ACharacter;
 
-void StartDeathRagdoll(ACharacter& Character);
+void PlayDeathThenRagdoll(ACharacter& Character);
